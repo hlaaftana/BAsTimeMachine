@@ -1,4 +1,4 @@
-import sdl2, sdl2/image as sdlimage, sdl2/mixer
+import sdl2, sdl2/mixer, sdl2/image as sdlimage
 import /data
 
 template tap*(val, body): untyped =
@@ -36,4 +36,21 @@ template playAudio*(game: Game, loops = 1) =
   discard playMusic(game.currentAudio, loops)
 
 proc draw*(game: Game, texture: TexturePtr, src, dest: Rect) =
-  game.renderer.copy(texture, unsafeAddr src, unsafeAddr dest)
+  var (src, dest) = (src, dest)
+  game.renderer.copy(texture, addr src, addr dest)
+
+proc draw*(game: Game, texture: TexturePtr, dest: Rect) =
+  var w, h: cint
+  texture.queryTexture(nil, nil, addr w, addr h)
+  var
+    src = rect(0, 0, w, h)
+    dest = dest
+  game.renderer.copy(texture, addr src, addr dest)
+
+proc draw*(game: Game, texture: TexturePtr, x, y: cint) =
+  var w, h: cint
+  texture.queryTexture(nil, nil, addr w, addr h)
+  var
+    src = rect(0, 0, w, h)
+    dest = rect(x, y, w, h)
+  game.renderer.copy(texture, addr src, addr dest)

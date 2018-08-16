@@ -1,4 +1,5 @@
-import sdl2, sdl2/mixer
+import sdl2 except init, quit
+import sdl2/[mixer, ttf]
 import /data, /util
 
 proc setPokemon(game: Game, pm: Pokemon) =
@@ -20,6 +21,7 @@ proc update(game: Game, newState: GameState) =
     game.setAudio(data.dialogMusic)
     game.loopAudio()
   of gskPokemon:
+    game.state.pokemonTextbox = game.loadTexture(textboxImage)
     game.setPokemon(low(Pokemon))
 
 proc key(game: Game, code: Scancode) =
@@ -53,21 +55,14 @@ proc render(game: Game) =
   case stateKinds[game.state.kind]
   of gskNoOp: discard
   of gskDialog:
-    let texture = game.state.dialog
-    var w, h: cint
-    texture.queryTexture(nil, nil, addr w, addr h)
     let (ww, wh) = game.window.getSize()
-    game.draw(texture,
-      src = rect(0, 0, w, h),
+    game.draw(game.state.dialog,
       dest = rect(0, 0, ww, wh))
   of gskPokemon:
-    let poktex = game.state.pokemonTexture
-    var w, h: cint
-    poktex.queryTexture(nil, nil, addr w, addr h)
     let (ww, wh) = game.window.getSize()
-    game.draw(poktex,
-      src = rect(0, 0, w, h),
-      dest = rect(ww div 2, wh div 2, ww, wh))
+    let (aww, awh) = (ww div 2, wh div 2)
+    game.draw(game.state.pokemonTexture, rect(aww, 0, aww, awh))
+    game.draw(game.state.pokemonTextbox, rect(0, awh, ww, awh))
   else: discard
   game.renderer.present()
 
