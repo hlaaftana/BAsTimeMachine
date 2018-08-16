@@ -6,16 +6,12 @@ template tap*(val, body): untyped =
   body
   it
 
-template assertBool*(b, a): untyped =
-  let it {.inject.} = a
-  assert b
-
 template assertBool*(a): untyped =
   let x = a
   assert x
 
-template withSurface*(surf, body): untyped =
-  let it {.inject.} = surf
+template withSurface*(surf, body): untyped {.dirty.} =
+  let it = surf
   body
   freeSurface(it)
 
@@ -27,7 +23,7 @@ proc loadTexture*(game: Game, image: string): SizedTexture =
     result.h = it.h
     result.texture = createTextureFromSurface(game.renderer, it)
 
-proc `audio=`*(game: Game, file: string) =
+proc setAudio*(game: Game, file: string) =
   if not game.currentAudio.isNil:
     discard haltMusic()
     freeMusic(game.currentAudio)
@@ -37,6 +33,9 @@ proc `audio=`*(game: Game, file: string) =
 
 template loopAudio*(game: Game) =
   discard playMusic(game.currentAudio, -1)
+
+template playAudio*(game: Game, loops = 1) =
+  discard playMusic(game.currentAudio, loops)
 
 proc draw*(game: Game, texture: TexturePtr, src, dest: Rect) =
   game.renderer.copy(texture, unsafeAddr src, unsafeAddr dest)

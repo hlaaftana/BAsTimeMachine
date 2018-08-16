@@ -18,7 +18,11 @@ type
       dialogImage*, dialogMusic*: string
       dialogColor*: Color
     of gskPokemon:
-      pokemon*: array[low(Pokemon)..high(Pokemon), tuple[image, cry: string]]
+      discard # i tried putting an array here for all the pokemon data
+              # but it kept hanging the compiler so i tried a seq
+              # at which point the compiler said the seq was nil even though it was in the initializer
+              # so i changed it to a ref object and it gave a SIGSEGV
+              # so i made it a separate const
 
 const
   stateData*: array[low(GameState)..high(GameState), GameStateData] = [
@@ -27,12 +31,14 @@ const
       dialogMusic: "res/menu.mp3", dialogColor: color(221, 247, 255, 255)),
     GameStateData(kind: gskDialog, dialogImage: "res/intro.png",
       dialogMusic: "res/intro.mp3", dialogColor: color(255, 255, 255, 255)),
-    GameStateData(kind: gskPokemon, pokemon: [
-      ("res/pokemon/yourmurderguy.png", "res/pokemon/yourmurderguy.mp3"),
-      ("res/pokemon/troll.png", "res/pokemon/troll.mp3"),
-      ("res/pokemon/roy.png", "res/pokemon/roy.mp3"),
-      ("res/pokemon/ethereal god.png", "res/pokemon/ethereal god.mp3"),
-      ("res/pokemon/morty.png", "res/pokemon/morty.mp3")])]
+    GameStateData(kind: gskPokemon)]
+
+  pokemonData*: array[low(Pokemon)..high(Pokemon), tuple[image, cry: string]] = [
+    ("res/pokemon/yourmurderguy.png", "res/pokemon/yourmurderguy.mp3"),
+    ("res/pokemon/troll.png", "res/pokemon/troll.mp3"),
+    ("res/pokemon/roy.png", "res/pokemon/roy.mp3"),
+    ("res/pokemon/ethereal god.png", "res/pokemon/ethereal god.mp3"),
+    ("res/pokemon/morty.png", "res/pokemon/morty.mp3")]
 
 const
   stateKinds*: array[low(GameState)..high(GameState), GameStateKind] = block:
@@ -55,6 +61,8 @@ type
       dialog*: SizedTexture
     of gsPokemon:
       currentPokemon*: Pokemon
+      pokemonTexture*: SizedTexture
+    else: discard
 
   Game* = ref object
     window*: WindowPtr

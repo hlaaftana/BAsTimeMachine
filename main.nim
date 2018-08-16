@@ -1,6 +1,12 @@
 import sdl2, sdl2/mixer
 import /data, /util
 
+proc setPokemon(game: Game, pm: Pokemon) =
+  let (image, cry) = pokemonData[pm]
+  game.state.pokemonTexture = game.loadTexture(image)
+  game.setAudio(cry)
+  game.playAudio()
+
 proc update(game: Game, newState: GameState) =
   game.state = State(kind: newState)
   let data = stateData[newState]
@@ -9,10 +15,10 @@ proc update(game: Game, newState: GameState) =
   of gskDialog:
     game.renderer.setDrawColor(data.dialogColor)
     game.state.dialog = game.loadTexture(data.dialogImage)
-    game.audio = data.dialogMusic
+    game.setAudio(data.dialogMusic)
     game.loopAudio()
   of gskPokemon:
-    game.state.currentPokemon = low(Pokemon)
+    game.setPokemon(low(Pokemon))
 
 proc key(game: Game, code: Scancode) =
   case game.state.kind
