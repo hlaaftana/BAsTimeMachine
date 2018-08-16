@@ -3,7 +3,9 @@ import /data, /util
 
 proc setPokemon(game: Game, pm: Pokemon) =
   let (image, cry) = pokemonData[pm]
+  assert game.state.kind == gsPokemon
   game.state.pokemonTexture = game.loadTexture(image)
+  game.state.currentPokemon = pm
   game.setAudio(cry)
   game.playAudio()
 
@@ -28,6 +30,12 @@ proc key(game: Game, code: Scancode) =
   of gsIntro:
     if not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)): 
       game.update(gsPokemon)
+  of gsPokemon:
+    if not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
+      if game.state.currentPokemon == high(Pokemon):
+        game.update(gsDone)
+      else:
+        game.setPokemon(succ(game.state.currentPokemon))
   else: discard
 
 proc listen(game: Game) =
