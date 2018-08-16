@@ -1,61 +1,27 @@
-import sdl2, sdl2/image as sdlimage, sdl2/mixer
+import sdl2, sdl2/mixer
+import /data, /util
 
-type
-  GameStateKind = enum
-    gsNone, gsDone, gsMenu, gsIntro
-
-  Game = ref object
-    window: WindowPtr
-    renderer: RendererPtr
-    currentAudio: MusicPtr
-    case state: GameStateKind
-    of gsNone, gsDone: discard
-    of gsMenu, gsIntro:
-      dialogWidth, dialogHeight: cint
-      dialogTexture: TexturePtr
-
-template assertBool(a): untyped =
-  let x = a
-  assert x
-
-proc dialog(game: Game, image: string) =
-  let surf = sdlimage.load(image)
-  if surf.isNil: quit "Give me back my " & image
-  (game.dialogWidth, game.dialogHeight) = (surf.w, surf.h)
-  game.dialogTexture = createTextureFromSurface(game.renderer, surf)
-  freeSurface(surf)
-
-proc `audio=`(game: Game, file: string) =
-  if not game.currentAudio.isNil:
-    discard haltMusic()
-    freeMusic(game.currentAudio)
-  game.currentAudio = loadMus(file)
-  if game.currentAudio.isNil: quit "Give me back my " & file
-
-template loopAudio(game: Game) =
-  discard playMusic(game.currentAudio, -1)
-
-proc draw(game: Game, texture: TexturePtr, src, dest: Rect) =
-  game.renderer.copy(texture, unsafeAddr src, unsafeAddr dest)
-
-proc update(game: Game, newState: GameStateKind) =
-  game.state = newState
-  case newState
-  of gsMenu:
-    game.renderer.setDrawColor(r = 221, g = 247, b = 255)
-    game.dialog("res/menu.png")
-    game.audio = "res/menu.mp3"
+proc update(game: Game, newState: GameState) =
+  game.state = State(kind: newState)
+  let data = stateData[newState]
+  case data.kind
+  of gskNoOp: discard
+  of gskDialog:
+    game.renderer.setDrawColor(data.dialogColor)
+    game.state.dialog = game.loadTexture(data.dialogImage)
+    game.audio = data.dialogMusic
     game.loopAudio()
-  of gsIntro:
-    game.renderer.setDrawColor(r = 255, g = 255, b = 255)
-
-  else: discard
+  of gskPokemon:
+    game.state.currentPokemon = low(Pokemon)
 
 proc key(game: Game, code: Scancode) =
-  case game.state
+  case game.state.kind
   of gsMenu:
     if not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)): 
-      game.update(gsDone) # start
+      game.update(gsIntro)
+  of gsIntro:
+    if not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)): 
+      game.update(gsPokemon)
   else: discard
 
 proc listen(game: Game) =
@@ -63,18 +29,20 @@ proc listen(game: Game) =
   while event.pollEvent():
     case event.kind
     of QuitEvent:
-      game.state = gsDone
+      game.state = doneState
     of KeyDown:
       key(game, event.key.keysym.scancode)
     else: discard
 
 proc render(game: Game) =
   game.renderer.clear()
-  case game.state
-  of gsMenu, gsIntro:
+  case stateKinds[game.state.kind]
+  of gskNoOp: discard
+  of gskDialog:
+    let (w, h, texture) = game.state.dialog
     let (ww, wh) = game.window.getSize()
-    game.draw(game.dialogTexture,
-      src = rect(0, 0, game.dialogWidth, game.dialogHeight),
+    game.draw(texture,
+      src = rect(0, 0, w, h),
       dest = rect(0, 0, ww, wh))
   else: discard
   game.renderer.present()
@@ -100,12 +68,12 @@ proc main =
   discard openAudio(0, 0, 2, 4096)
   game.update(gsMenu)
 
-  while game.state != gsDone:
+  while game.state.kind != gsDone:
     game.listen()
     game.render()
 
   if not game.currentAudio.isNil:
-    mixer.freeMusic(game.currentAudio)
+    freeMusic(game.currentAudio)
     closeAudio()
   game.window.destroy()
   game.renderer.destroy()
