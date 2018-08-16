@@ -53,11 +53,21 @@ proc render(game: Game) =
   case stateKinds[game.state.kind]
   of gskNoOp: discard
   of gskDialog:
-    let (w, h, texture) = game.state.dialog
+    let texture = game.state.dialog
+    var w, h: cint
+    texture.queryTexture(nil, nil, addr w, addr h)
     let (ww, wh) = game.window.getSize()
     game.draw(texture,
       src = rect(0, 0, w, h),
       dest = rect(0, 0, ww, wh))
+  of gskPokemon:
+    let poktex = game.state.pokemonTexture
+    var w, h: cint
+    poktex.queryTexture(nil, nil, addr w, addr h)
+    let (ww, wh) = game.window.getSize()
+    game.draw(poktex,
+      src = rect(0, 0, w, h),
+      dest = rect(ww div 2, wh div 2, ww, wh))
   else: discard
   game.renderer.present()
 

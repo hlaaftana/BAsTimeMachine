@@ -52,16 +52,14 @@ const
     result
 
 type
-  SizedTexture* = tuple[w, h: cint, texture: TexturePtr]
-
   State* = object
     case kind*: GameState
     of kindStates[gskNoOp]: discard
     of kindStates[gskDialog]:
-      dialog*: SizedTexture
+      dialog*: TexturePtr
     of gsPokemon:
       currentPokemon*: Pokemon
-      pokemonTexture*: SizedTexture
+      pokemonTexture*: TexturePtr
     else: discard
 
   Game* = ref object
@@ -73,5 +71,3 @@ type
 let
   doneState* = State(kind: gsDone)
   noneState* = State(kind: gsNone)
-
-converter toTexture*(sized: SizedTexture): TexturePtr = sized.texture

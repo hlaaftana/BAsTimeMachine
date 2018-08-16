@@ -15,13 +15,11 @@ template withSurface*(surf, body): untyped {.dirty.} =
   body
   freeSurface(it)
 
-proc loadTexture*(game: Game, image: string): SizedTexture =
+proc loadTexture*(game: Game, image: string): TexturePtr =
   withSurface sdlimage.load(image):
     if it.isNil:
       quit "Give me back my " & image
-    result.w = it.w
-    result.h = it.h
-    result.texture = createTextureFromSurface(game.renderer, it)
+    result = createTextureFromSurface(game.renderer, it)
 
 proc setAudio*(game: Game, file: string) =
   if not game.currentAudio.isNil:
