@@ -1,7 +1,7 @@
-import sdl2, sdl2/mixer
+import sdl2, sdl2/mixer, /chess
 
 type
-  Pokemon* = enum
+  PokemonKind* = enum
     Yourmurderguy, Troll, Roy, `Ethereal God`, Morty
 
   GameState* = enum
@@ -11,11 +11,15 @@ type
     gskNoOp, gskDialog, gskPokemon
 
 type
+  PokemonData* = object
+    image*, cry*: cstring
+    text*: seq[string]
+
   GameStateData* = object
     case kind*: GameStateKind
     of gskNoOp: discard
     of gskDialog:
-      dialogImage*, dialogMusic*: string
+      dialogImage*, dialogMusic*: cstring
       dialogColor*: Color
     of gskPokemon:
       discard
@@ -35,15 +39,22 @@ const
       dialogMusic: "res/intro.mp3", dialogColor: color(255, 255, 255, 255)),
     GameStateData(kind: gskPokemon)]
 
-  textboxImage* = "res/textbox.png"
+  textboxImage*: cstring = "res/textbox.png"
 
   # if you think this should be in state data read above
-  pokemonData*: array[low(Pokemon)..high(Pokemon), tuple[image, cry: string]] = [
-    ("res/pokemon/yourmurderguy.png", "res/pokemon/yourmurderguy.mp3"),
-    ("res/pokemon/troll.png", "res/pokemon/troll.mp3"),
-    ("res/pokemon/roy.png", "res/pokemon/roy.mp3"),
-    ("res/pokemon/ethereal god.png", "res/pokemon/ethereal god.mp3"),
-    ("res/pokemon/morty.png", "res/pokemon/morty.mp3")]
+  pokemonData*: array[low(PokemonKind)..high(PokemonKind), PokemonData] = [
+    PokemonData(image: "res/pokemon/yourmurderguy.png", cry: "res/pokemon/yourmurderguy.mp3",
+      text: @["Yourmurderguy joins the battle!", "Your score was $1. Terrible job a!"]),
+    PokemonData(image: "res/pokemon/troll.png", cry: "res/pokemon/troll.mp3",
+      text: @["Troll challenges you to a mental duel....", "Fill in this one box sudoku by typing a key!.....",
+        "What? what's that? what did you type in? its a number? are you not brainy? No more",
+        "NO!!!!! MY POWERRRRRRRRR!!!!!!! DUDE!!!!!"]),
+    PokemonData(image: "res/pokemon/roy.png", cry: "res/pokemon/roy.mp3",
+      text: @["its Roy", "you killed Roy", "Roy watches anime!", "Roy use Portmanteau"]),
+    PokemonData(image: "res/pokemon/ethereal god.png", cry: "res/pokemon/ethereal god.mp3",
+      text: @["Ethereal God challenges to battle! DGGKPfpt", "Your score was $1! Thank you!"]),
+    PokemonData(image: "res/pokemon/morty.png", cry: "res/pokemon/morty.mp3",
+      text: @["Morty is Chess."])]
 
 const
   stateKinds* = block:
@@ -57,15 +68,34 @@ const
     result
 
 type
+  PokemonText* = object
+    rendered*: seq[TexturePtr]
+    renderedLen*, fullLen*, delay*: int
+
+  Pokemon* = object
+    case kind*: PokemonKind
+    of Yourmurderguy, `Ethereal God`:
+      ddrHitboxes*: seq[TexturePtr]
+      ddrArrows*: seq[seq[TexturePtr]]
+      ddrScore*, ddrCount*: int
+    of Troll:
+      sudokuTexture*: TexturePtr
+      sudokuCharacterTexture*: TexturePtr
+    of Roy:
+      ourHealth*, royHealth*: int
+    of Morty:
+      chessBoard*: chess.Board
+      chessPieceTextures*: array[Pawn..King, (TexturePtr, TexturePtr)]
+
   State* = object
     case kind*: GameState
     of kindStates[gskNoOp]: discard
     of kindStates[gskDialog]:
       dialog*: TexturePtr
     of gsPokemon:
-      currentPokemon*: Pokemon
-      pokemonTexture*: TexturePtr
-      pokemonTextbox*: TexturePtr
+      pokemon*: Pokemon
+      pokemonTexture*, pokemonTextbox*: TexturePtr
+      pokemonText*: PokemonText
     else: discard
 
   Game* = ref object
@@ -77,3 +107,15 @@ type
 let
   doneState* = State(kind: gsDone)
   noneState* = State(kind: gsNone)
+
+proc `/`*(a, b: Point): Point =
+  (a[0] div b[0], a[1] div b[1])
+
+proc hitbox*(pok: Pokemon, i: int, windowSize: Point): Rect =
+  let tex = pok.ddrHitboxes[i]
+  var w, h: cint
+  tex.queryTexture(nil, nil, addr w, addr h)
+  let
+    startX: cint = cint(5 + i * w * 1080) div windowSize[0]
+    startY: cint = cint(5 * 720) div windowSize[1]
+  result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 1080) div windowSize[1])

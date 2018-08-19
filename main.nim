@@ -1,13 +1,20 @@
 import sdl2 except init, quit
-import sdl2/[mixer, ttf]
-import /data, /util
+import sdl2/[mixer, ttf], random
+import /chess, /data, /util
 
-proc setPokemon(game: Game, pm: Pokemon) =
-  let (image, cry) = pokemonData[pm]
+proc setPokemon(game: Game, pm: PokemonKind) =
+  let data = pokemonData[pm]
   assert game.state.kind == gsPokemon
-  game.state.pokemonTexture = game.loadTexture(image)
-  game.state.currentPokemon = pm
-  game.setAudio(cry)
+  game.state.pokemonTexture = game.loadTexture(data.image)
+  game.state.pokemon = Pokemon(kind: pm)
+  case pm
+  of Roy:
+    game.state.pokemon.ourHealth = 50
+    game.state.pokemon.royHealth = 5
+  of Morty:
+    game.state.pokemon.chessBoard.init()
+  else: discard
+  game.setAudio(data.cry)
   game.playAudio()
 
 proc update(game: Game, newState: GameState) =
@@ -22,7 +29,7 @@ proc update(game: Game, newState: GameState) =
     game.loopAudio()
   of gskPokemon:
     game.state.pokemonTextbox = game.loadTexture(textboxImage)
-    game.setPokemon(low(Pokemon))
+    game.setPokemon(low(PokemonKind))
 
 proc key(game: Game, code: Scancode) =
   case game.state.kind
@@ -34,10 +41,18 @@ proc key(game: Game, code: Scancode) =
       game.update(gsPokemon)
   of gsPokemon:
     if not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
-      if game.state.currentPokemon == high(Pokemon):
+      if game.state.pokemon.kind == high(PokemonKind):
         game.update(gsDone)
       else:
-        game.setPokemon(succ(game.state.currentPokemon))
+        game.setPokemon(succ(game.state.pokemon.kind))
+  else: discard
+
+proc mouse(game: Game, x, y: cint) =
+  case game.state.kind
+  of gsPokemon:
+    case game.state.pokemon.kind
+    of Yourmurderguy, `Ethereal God`:
+      
   else: discard
 
 proc listen(game: Game) =
@@ -47,7 +62,11 @@ proc listen(game: Game) =
     of QuitEvent:
       game.state = doneState
     of KeyDown:
-      key(game, event.key.keysym.scancode)
+      game.key(event.key.keysym.scancode)
+    of MouseButtonDown:
+      let ev = event.button
+      if ev.button == ButtonLeft:
+        game.mouse(ev.x, ev.y)
     else: discard
 
 proc render(game: Game) =
