@@ -2,12 +2,17 @@ import sdl2 except init, quit
 import sdl2/[mixer, ttf], random
 import /chess, /data, /util
 
+{.warning[ProveField]: off.}
+
 proc setPokemon(game: Game, pm: PokemonKind) =
   let data = pokemonData[pm]
   assert game.state.kind == gsPokemon
   game.state.pokemonTexture = game.loadTexture(data.image)
   game.state.pokemon = Pokemon(kind: pm)
   case pm
+  of Yourmurderguy, `Ethereal God`:
+    let tx = data.text[0]
+    game.state.pokemonText = PokemonText(real: tx, rendered: newSeqOfCap[TexturePtr](tx.len))
   of Roy:
     game.state.pokemon.ourHealth = 50
     game.state.pokemon.royHealth = 5
@@ -16,6 +21,13 @@ proc setPokemon(game: Game, pm: PokemonKind) =
   else: discard
   game.setAudio(data.cry)
   game.playAudio()
+
+proc setPokemonText(game: Game, text: string) =
+  game.state.pokemonText = PokemonText(real: text, rendered: newSeqOfCap[TexturePtr](text.len))
+
+proc clearDdrArrow(pok: var Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
+  pok.ddrScore = cint(abs(hy - ay) * 720) div windowSize[1]
+  pok.ddrArrows[hi].arrows.del(i)
 
 proc update(game: Game, newState: GameState) =
   game.state = State(kind: newState)
@@ -50,9 +62,21 @@ proc key(game: Game, code: Scancode) =
 proc mouse(game: Game, x, y: cint) =
   case game.state.kind
   of gsPokemon:
-    case game.state.pokemon.kind
+    let pok = game.state.pokemon
+    case pok.kind
     of Yourmurderguy, `Ethereal God`:
-      
+      let winsz = game.window.getSize()
+      block bigger:
+        for hi in countup(0, high(pok.ddrArrows)):
+          let hitbox = hitbox(pok, hi, winsz)
+          if (x, y) in hitbox:
+            let arrows = pok.ddrArrows[hi].arrows
+            for i in countup(0, high(arrows)):
+              let arrow = arrow(pok, hi, i, winsz)
+              if (x, y) in arrow:
+                clearDdrArrow(game.state.pokemon, hi, i, hitbox.y, arrow.y, winsz)
+                break bigger
+    else: discard
   else: discard
 
 proc listen(game: Game) =
@@ -82,6 +106,14 @@ proc render(game: Game) =
     let (aww, awh) = (ww div 2, wh div 2)
     game.draw(game.state.pokemonTexture, rect(aww, 0, aww, awh))
     game.draw(game.state.pokemonTextbox, rect(0, awh, ww, awh))
+    let pok = game.state.pokemon
+    case pok.kind
+    of Yourmurderguy, `Ethereal God`:
+      if game.state.pokemonText.real.len == 0:
+        # ddr state
+        if pok.ddrCount >= 50:
+          game.setPokemonText(pokemonData[pok.kind].text[1] % $pok.ddrScore)  
+    else: discard
   else: discard
   game.renderer.present()
 

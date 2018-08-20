@@ -70,13 +70,13 @@ const
 type
   PokemonText* = object
     rendered*: seq[TexturePtr]
-    renderedLen*, fullLen*, delay*: int
+    real*: string
+    delay*: int
 
   Pokemon* = object
     case kind*: PokemonKind
     of Yourmurderguy, `Ethereal God`:
-      ddrHitboxes*: seq[TexturePtr]
-      ddrArrows*: seq[seq[TexturePtr]]
+      ddrArrows*: seq[tuple[hitbox: TexturePtr, arrows: seq[tuple[texture: TexturePtr, value: int]]]]
       ddrScore*, ddrCount*: int
     of Troll:
       sudokuTexture*: TexturePtr
@@ -112,10 +112,20 @@ proc `/`*(a, b: Point): Point =
   (a[0] div b[0], a[1] div b[1])
 
 proc hitbox*(pok: Pokemon, i: int, windowSize: Point): Rect =
-  let tex = pok.ddrHitboxes[i]
+  let tex = pok.ddrArrows[i].hitbox
   var w, h: cint
   tex.queryTexture(nil, nil, addr w, addr h)
   let
-    startX: cint = cint(5 + i * w * 1080) div windowSize[0]
+    startX: cint = cint((5 + i * w) * 1080) div windowSize[0]
     startY: cint = cint(5 * 720) div windowSize[1]
-  result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 1080) div windowSize[1])
+  result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])
+
+proc arrow*(pok: Pokemon, hi, i: int, windowSize: Point): Rect =
+  let arr = pok.ddrArrows[hi]
+  let it = arr.arrows[i]
+  var w, h: cint
+  it.texture.queryTexture(nil, nil, addr w, addr h)
+  let
+    startX: cint = cint((5 + hi * w) * 1080) div windowSize[0]
+    startY: cint = cint((715 - it.value) * 720) div windowSize[1]
+  result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])
