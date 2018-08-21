@@ -9,10 +9,10 @@ proc setPokemon(game: Game, pm: PokemonKind) =
   assert game.state.kind == gsPokemon
   game.state.pokemonTexture = game.loadTexture(data.image)
   game.state.pokemon = Pokemon(kind: pm)
+  game.state.pokemonText = newPokemonText(data.text[0])
   case pm
   of Yourmurderguy, `Ethereal God`:
-    let tx = data.text[0]
-    game.state.pokemonText = PokemonText(real: tx, rendered: newSeqOfCap[TexturePtr](tx.len))
+    discard
   of Roy:
     game.state.pokemon.ourHealth = 50
     game.state.pokemon.royHealth = 5
@@ -22,10 +22,27 @@ proc setPokemon(game: Game, pm: PokemonKind) =
   game.setAudio(data.cry)
   game.playAudio()
 
-proc setPokemonText(game: Game, text: string) =
-  game.state.pokemonText = PokemonText(real: text, rendered: newSeqOfCap[TexturePtr](text.len))
+proc initiateDdr(game: Game, pok: Pokemon) =
+  discard
 
-proc clearDdrArrow(pok: var Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
+proc progressText(game: Game, pok: Pokemon) =
+  case pok.kind
+  of Yourmurderguy, `Ethereal God`:
+    if pok.ddrCount == 0:
+      initiateDdr(game, pok)
+    else:
+      setPokemon(game, succ(pok.kind))
+  of Troll:
+    let p = pokemonData[pok.kind]
+    if pok.sudokuTexture.isNil:
+      game.state.pokemonText = newPokemonText(p.text[1])
+      pok.sudokuTexture = game.loadTexture(sudokuImage)
+      startTextInput()
+    else:
+      setPokemon(game, succ(pok.kind))
+  else: discard
+
+proc clearDdrArrow(pok: Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
   pok.ddrScore = cint(abs(hy - ay) * 720) div windowSize[1]
   pok.ddrArrows[hi].arrows.del(i)
 
@@ -42,6 +59,8 @@ proc update(game: Game, newState: GameState) =
   of gskPokemon:
     game.state.pokemonTextbox = game.loadTexture(textboxImage)
     game.setPokemon(low(PokemonKind))
+  of gskOperation:
+    discard
 
 proc key(game: Game, code: Scancode) =
   case game.state.kind
@@ -52,17 +71,20 @@ proc key(game: Game, code: Scancode) =
     if not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)): 
       game.update(gsPokemon)
   of gsPokemon:
-    if not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
-      if game.state.pokemon.kind == high(PokemonKind):
-        game.update(gsDone)
-      else:
-        game.setPokemon(succ(game.state.pokemon.kind))
+    let pok = game.state.pokemon
+    #[if pok.kind == Troll and not pok.sudokuTexture.isNil and pok.sudokuCharacterTexture.isNil:
+
+    el]#if game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
+      progressText(game, pok)
   else: discard
 
 proc mouse(game: Game, x, y: cint) =
   case game.state.kind
   of gsPokemon:
     let pok = game.state.pokemon
+    if game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
+      progressText(game, pok)
+      return
     case pok.kind
     of Yourmurderguy, `Ethereal God`:
       let winsz = game.window.getSize()
@@ -112,7 +134,7 @@ proc render(game: Game) =
       if game.state.pokemonText.real.len == 0:
         # ddr state
         if pok.ddrCount >= 50:
-          game.setPokemonText(pokemonData[pok.kind].text[1] % $pok.ddrScore)  
+          game.state.pokemonText = newPokemonText(pokemonData[pok.kind].text[1] % $pok.ddrScore)  
     else: discard
   else: discard
   game.renderer.present()

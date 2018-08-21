@@ -5,10 +5,10 @@ type
     Yourmurderguy, Troll, Roy, `Ethereal God`, Morty
 
   GameState* = enum
-    gsNone, gsDone, gsMenu, gsIntro, gsPokemon
+    gsNone, gsDone, gsMenu, gsIntro, gsPokemon, gsOperation
 
   GameStateKind* = enum
-    gskNoOp, gskDialog, gskPokemon
+    gskNoOp, gskDialog, gskPokemon, gskOperation
 
 type
   PokemonData* = object
@@ -29,6 +29,8 @@ type
       # so i changed it to a ref object and it gave a SIGSEGV
       # so i made it a separate const
       # UPDATE: THEN i tried putting in a string but it gives an empty string instead of what i set it to.
+    of gskOperation:
+      discard
 
 const
   stateData*: array[low(GameState)..high(GameState), GameStateData] = [
@@ -37,9 +39,12 @@ const
       dialogMusic: "res/menu.mp3", dialogColor: color(221, 247, 255, 255)),
     GameStateData(kind: gskDialog, dialogImage: "res/intro.png",
       dialogMusic: "res/intro.mp3", dialogColor: color(255, 255, 255, 255)),
-    GameStateData(kind: gskPokemon)]
+    GameStateData(kind: gskPokemon),
+    GameStateData(kind: gskOperation)]
 
   textboxImage*: cstring = "res/textbox.png"
+  sudokuImage*: cstring = "res/sudoku.png"
+  #ddrData*: array[0..1, seq[tuple[key: Scancode, hitboxImage: string, arrowImage: string]]] = [@[], @[]]
 
   # if you think this should be in state data read above
   pokemonData*: array[low(PokemonKind)..high(PokemonKind), PokemonData] = [
@@ -73,10 +78,10 @@ type
     real*: string
     delay*: int
 
-  Pokemon* = object
+  Pokemon* = ref object
     case kind*: PokemonKind
     of Yourmurderguy, `Ethereal God`:
-      ddrArrows*: seq[tuple[hitbox: TexturePtr, arrows: seq[tuple[texture: TexturePtr, value: int]]]]
+      ddrArrows*: seq[tuple[key: Scancode, hitbox: TexturePtr, arrows: seq[tuple[texture: TexturePtr, value: int]]]]
       ddrScore*, ddrCount*: int
     of Troll:
       sudokuTexture*: TexturePtr
@@ -87,7 +92,7 @@ type
       chessBoard*: chess.Board
       chessPieceTextures*: array[Pawn..King, (TexturePtr, TexturePtr)]
 
-  State* = object
+  State* = ref object
     case kind*: GameState
     of kindStates[gskNoOp]: discard
     of kindStates[gskDialog]:
@@ -96,6 +101,8 @@ type
       pokemon*: Pokemon
       pokemonTexture*, pokemonTextbox*: TexturePtr
       pokemonText*: PokemonText
+    of gsOperation:
+      discard
     else: discard
 
   Game* = ref object
@@ -107,6 +114,9 @@ type
 let
   doneState* = State(kind: gsDone)
   noneState* = State(kind: gsNone)
+
+proc newPokemonText*(text: string): PokemonText =
+  PokemonText(real: text, rendered: newSeqOfCap[TexturePtr](text.len))
 
 proc `/`*(a, b: Point): Point =
   (a[0] div b[0], a[1] div b[1])
