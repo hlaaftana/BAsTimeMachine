@@ -1,4 +1,4 @@
-import sdl2, sdl2/mixer, /chess
+import sdl2, sdl2/[mixer, ttf], /chess
 
 type
   PokemonKind* = enum
@@ -11,6 +11,8 @@ type
     gskNoOp, gskDialog, gskPokemon, gskOperation
 
 type
+  DdrData* = tuple[key: Scancode, hitboxImage, arrowImage: string]
+
   PokemonData* = object
     image*, cry*: cstring
     text*: seq[string]
@@ -44,7 +46,16 @@ const
 
   textboxImage*: cstring = "res/textbox.png"
   sudokuImage*: cstring = "res/sudoku.png"
-  #ddrData*: array[0..1, seq[tuple[key: Scancode, hitboxImage: string, arrowImage: string]]] = [@[], @[]]
+  ddrYourmurderguyData*: seq[DdrData] = @[
+    (SDL_SCANCODE_UP, "res/ddr/up_hitbox.png", "res/ddr/up_arrow.png"),
+    (SDL_SCANCODE_DOWN, "res/ddr/down_hitbox.png", "res/ddr/down_arrow.png"),
+    (SDL_SCANCODE_LEFT, "res/ddr/left_hitbox.png", "res/ddr/left_arrow.png"),
+    (SDL_SCANCODE_RIGHT, "res/ddr/right_hitbox.png", "res/ddr/right_arrow.png")]
+  ddrEtherealGodData*: seq[DdrData] = @[
+    (SDL_SCANCODE_UP, "res/ddr/up_hitbox.png", "res/ddr/up_arrow.png"),
+    (SDL_SCANCODE_DOWN, "res/ddr/down_hitbox.png", "res/ddr/down_arrow.png"),
+    (SDL_SCANCODE_LEFT, "res/ddr/left_hitbox.png", "res/ddr/left_arrow.png"),
+    (SDL_SCANCODE_RIGHT, "res/ddr/right_hitbox.png", "res/ddr/right_arrow.png")]
 
   # if you think this should be in state data read above
   pokemonData*: array[low(PokemonKind)..high(PokemonKind), PokemonData] = [
@@ -109,6 +120,7 @@ type
     window*: WindowPtr
     renderer*: RendererPtr
     currentAudio*: MusicPtr
+    font*: FontPtr
     state*: State
 
 let
@@ -138,4 +150,12 @@ proc arrow*(pok: Pokemon, hi, i: int, windowSize: Point): Rect =
   let
     startX: cint = cint((5 + hi * w) * 1080) div windowSize[0]
     startY: cint = cint((715 - it.value) * 720) div windowSize[1]
+  result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])
+
+proc sudoku*(pok: Pokemon, windowSize: Point): Rect =
+  var w, h: cint
+  pok.sudokuTexture.queryTexture(nil, nil, addr w, addr h)
+  let
+    startX: cint = cint((540 - (w div 2)) * 1080) div windowSize[0]
+    startY: cint = cint((360 - (h div 2)) * 720) div windowSize[1]
   result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])

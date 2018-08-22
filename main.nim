@@ -1,5 +1,5 @@
 import sdl2 except init, quit
-import sdl2/[mixer, ttf], random
+import sdl2/[mixer, ttf], random, sequtils
 import /chess, /data, /util
 
 {.warning[ProveField]: off.}
@@ -10,9 +10,15 @@ proc setPokemon(game: Game, pm: PokemonKind) =
   game.state.pokemonTexture = game.loadTexture(data.image)
   game.state.pokemon = Pokemon(kind: pm)
   game.state.pokemonText = newPokemonText(data.text[0])
+  template ddrArrowSet(ddrData): untyped =
+    game.state.pokemon.ddrArrows = newSeq[type(game.state.pokemon.ddrArrows[0])](ddrData.len)
+    for i, d in ddrData:
+      game.state.pokemon.ddrArrows[i] = (d.key, game.loadTexture(d.hitboxImage), newSeq[(TexturePtr, int)]())
   case pm
-  of Yourmurderguy, `Ethereal God`:
-    discard
+  of Yourmurderguy:
+    ddrArrowSet(ddrYourmurderguyData)
+  of `Ethereal God`:
+    ddrArrowSet(ddrEtherealGodData)
   of Roy:
     game.state.pokemon.ourHealth = 50
     game.state.pokemon.royHealth = 5
@@ -57,6 +63,7 @@ proc update(game: Game, newState: GameState) =
     game.setAudio(data.dialogMusic)
     game.loopAudio()
   of gskPokemon:
+    game.font = font("Arial", 144)
     game.state.pokemonTextbox = game.loadTexture(textboxImage)
     game.setPokemon(low(PokemonKind))
   of gskOperation:
@@ -72,9 +79,21 @@ proc key(game: Game, code: Scancode) =
       game.update(gsPokemon)
   of gsPokemon:
     let pok = game.state.pokemon
-    #[if pok.kind == Troll and not pok.sudokuTexture.isNil and pok.sudokuCharacterTexture.isNil:
-
-    el]#if game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
+    case pok.kind
+    of Yourmurderguy, `Ethereal God`:
+      let winsz = game.window.getSize()
+      for hi, a in pok.ddrArrows:
+        let hity = hitbox(pok, hi, winsz).y
+        if code == a.key:
+          for i in countup(0, high(a.arrows)):
+            let ay = arrow(pok, hi, i, winsz).y
+            if ay <= hity:
+              clearDdrArrow(pok, hi, i, hity, ay, winsz)
+    of Troll:
+      if not pok.sudokuTexture.isNil and pok.sudokuCharacterTexture.isNil:
+        pok.sudokuCharacterTexture = 
+        return
+    elif game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
       progressText(game, pok)
   else: discard
 
@@ -82,9 +101,6 @@ proc mouse(game: Game, x, y: cint) =
   case game.state.kind
   of gsPokemon:
     let pok = game.state.pokemon
-    if game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
-      progressText(game, pok)
-      return
     case pok.kind
     of Yourmurderguy, `Ethereal God`:
       let winsz = game.window.getSize()
@@ -99,6 +115,8 @@ proc mouse(game: Game, x, y: cint) =
                 clearDdrArrow(game.state.pokemon, hi, i, hitbox.y, arrow.y, winsz)
                 break bigger
     else: discard
+    if game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
+      progressText(game, pok)
   else: discard
 
 proc listen(game: Game) =
