@@ -1,4 +1,4 @@
-import sdl2, sdl2/[mixer, ttf], /chess
+import sdl2, sdl2/[mixer, ttf], sdl2/image as sdlimage, /chess, /util
 
 type
   PokemonKind* = enum
@@ -50,7 +50,8 @@ const
     (SDL_SCANCODE_UP, "res/ddr/up_hitbox.png", "res/ddr/up_arrow.png"),
     (SDL_SCANCODE_DOWN, "res/ddr/down_hitbox.png", "res/ddr/down_arrow.png"),
     (SDL_SCANCODE_LEFT, "res/ddr/left_hitbox.png", "res/ddr/left_arrow.png"),
-    (SDL_SCANCODE_RIGHT, "res/ddr/right_hitbox.png", "res/ddr/right_arrow.png")]
+    (SDL_SCANCODE_RIGHT, "res/ddr/right_hitbox.png", "res/ddr/right_arrow.png"),
+    (SDL_SCANCODE_SPACE, "res/ddr/space_hitbox.png", "res/ddr/space_arrow.png")]
   ddrEtherealGodData*: seq[DdrData] = @[
     (SDL_SCANCODE_UP, "res/ddr/up_hitbox.png", "res/ddr/up_arrow.png"),
     (SDL_SCANCODE_DOWN, "res/ddr/down_hitbox.png", "res/ddr/down_arrow.png"),
@@ -87,7 +88,7 @@ type
   PokemonText* = object
     rendered*: seq[TexturePtr]
     real*: string
-    delay*: int
+    counter*, delay*: uint32
 
   Pokemon* = ref object
     case kind*: PokemonKind
@@ -123,12 +124,31 @@ type
     font*: FontPtr
     state*: State
 
-let
-  doneState* = State(kind: gsDone)
-  noneState* = State(kind: gsNone)
+const
+  colorBlack* = color(0, 0, 0, 255)
+  colorWhite* = color(255, 255, 255, 255)
+  defaultText* = PokemonText(real: "", rendered: @[])
 
-proc newPokemonText*(text: string): PokemonText =
-  PokemonText(real: text, rendered: newSeqOfCap[TexturePtr](text.len))
+#[var
+  doneStateVal {.threadvar.}: State
+  noneStateVal {.threadvar.}: State
+
+template doneState*: State =
+  bind doneStateVal
+  if unlikely(doneStateVal.isNil):
+    doneStateVal = State(kind: gsDone)
+  doneStateVal
+
+template noneState*: State =
+  bind noneStateVal
+  if unlikely(noneStateVal.isNil):
+    doneStateVal = State(kind: gsDone)
+  noneStateVal]#
+
+defaultVar doneState, State(kind: gsDone)
+
+proc newPokemonText*(text: string, delay: uint32 = 0): PokemonText =
+  PokemonText(real: text, rendered: newSeqOfCap[TexturePtr](text.len), delay: delay)
 
 proc `/`*(a, b: Point): Point =
   (a[0] div b[0], a[1] div b[1])
@@ -159,3 +179,59 @@ proc sudoku*(pok: Pokemon, windowSize: Point): Rect =
     startX: cint = cint((540 - (w div 2)) * 1080) div windowSize[0]
     startY: cint = cint((360 - (h div 2)) * 720) div windowSize[1]
   result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])
+
+proc loadTexture*(game: Game, image: cstring): TexturePtr =
+  withSurface sdlimage.load(image):
+    if unlikely(it.isNil):
+      quit "Couldn't load texture " & $image & ", error: " & $getError()
+    result = createTextureFromSurface(game.renderer, it)
+
+proc setAudio*(game: Game, file: cstring) =
+  if not game.currentAudio.isNil:
+    discard haltMusic()
+    freeMusic(game.currentAudio)
+  game.currentAudio = loadMus(file)
+  if unlikely(game.currentAudio.isNil):
+    quit "Couldn't load audio " & $file & ", error: " & $getError()
+
+template loopAudio*(game: Game) =
+  discard playMusic(game.currentAudio, -1)
+
+template playAudio*(game: Game, loops = 1) =
+  discard playMusic(game.currentAudio, loops)
+
+proc draw*(game: Game, texture: TexturePtr, src, dest: Rect) =
+  var
+    src = src
+    dest = dest
+  game.renderer.copy(texture, addr src, addr dest)
+
+proc draw*(game: Game, texture: TexturePtr, dest: Rect) =
+  var w, h: cint
+  texture.queryTexture(nil, nil, addr w, addr h)
+  var
+    src = rect(0, 0, w, h)
+    dest = dest
+  game.renderer.copy(texture, addr src, addr dest)
+
+proc draw*(game: Game, texture: TexturePtr, x, y: cint) =
+  var w, h: cint
+  texture.queryTexture(nil, nil, addr w, addr h)
+  var
+    src = rect(0, 0, w, h)
+    dest = rect(x, y, w, h)
+  game.renderer.copy(texture, addr src, addr dest)
+
+proc renderText*[T: char | cstring](game: Game, text: T,
+                                    font: FontPtr,
+                                    color = colorBlack): TexturePtr =
+  let surface =
+    when T is char:
+      renderGlyphSolid(font, text.uint16, color)
+    else:
+      renderTextSolid(font, text, color)
+  withSurface surface:
+    result = createTextureFromSurface(game.renderer, it)
+
+template renderText*[T](game: Game, text: T, color = colorBlack): TexturePtr =
+  renderText(game, text, game.font, color)
