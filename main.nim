@@ -1,5 +1,5 @@
 import sdl2 except init, quit
-import sdl2/[mixer, ttf], random, sequtils
+import sdl2/[mixer, ttf], random, sequtils, times
 import /chess, /data, /util
 
 {.warning[ProveField]: off.}
@@ -21,17 +21,14 @@ proc setPokemon(game: Game, pm: PokemonKind) =
   game.playAudio()
 
 proc initiateDdr(game: Game, pok: Pokemon) =
-  template ddrArrowSet(ddrData): untyped =
-    pok.ddrArrows = newSeq[type(pok.ddrArrows[0])](ddrData.len)
-    for i, d in ddrData:
-      pok.ddrArrows[i] = (d.key, game.loadTexture(d.hitboxImage), newSeq[(TexturePtr, int)]())
-
   game.state.pokemonText = defaultText
+  randomize()
   case pok.kind
-  of Yourmurderguy:
-    ddrArrowSet(ddrYourmurderguyData)
-  of `Ethereal God`:
-    ddrArrowSet(ddrEtherealGodData)
+  of Yourmurderguy, `Ethereal God`:
+    let data = ddrData(pok.kind)
+    pok.ddrArrows = newSeq[type(pok.ddrArrows[0])](data.len)
+    for i, d in data:
+      pok.ddrArrows[i] = (d.key, game.loadTexture(d.hitboxImage), game.loadTexture(d.arrowImage), newSeq[int]())
   else: discard
 
 proc update(game: Game, newState: GameState) =
@@ -45,6 +42,7 @@ proc update(game: Game, newState: GameState) =
     game.setAudio(data.dialogMusic)
     game.loopAudio()
   of gskPokemon:
+    randomize()
     game.state.pokemonTextbox = game.loadTexture(textboxImage)
     game.setPokemon(low(PokemonKind))
   of gskOperation:
@@ -77,9 +75,10 @@ proc progress(game: Game) =
 
 proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
   pok.ddrScore += cint(abs(hy - ay) * 720) div windowSize[1]
-  pok.ddrArrows[hi].arrows.del(i)
+  pok.ddrArrows[hi].values.del(i)
   if pok.ddrCount >= 41:
     game.state.pokemonText = newPokemonText(pokemonData[pok.kind].text[1] % $pok.ddrScore)
+    pok.ddrArrows = @[]
   else:
     inc pok.ddrCount
 
@@ -94,12 +93,13 @@ proc key(game: Game, code: Scancode) =
     of Yourmurderguy, `Ethereal God`:
       let winsz = game.window.getSize()
       for hi, a in pok.ddrArrows:
-        let hity = hitbox(pok, hi, winsz).y
+        let hit = hitbox(pok, hi, winsz)
         if code == a.key:
-          for i in countup(0, high(a.arrows)):
-            let ay = arrow(pok, hi, i, winsz).y
-            if ay <= hity:
-              clearDdrArrow(game, pok, hi, i, hity, ay, winsz)
+          for i in countup(0, high(a.values)):
+            let ah = arrow(pok, hi, i, winsz)
+            let range = hit.y .. (hit.y + hit.h)
+            if ah.y in range or (ah.y + ah.h) in range:
+              clearDdrArrow(game, pok, hi, i, hit.y, ah.y, winsz)
               return
     else: discard
     if game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
@@ -119,7 +119,7 @@ proc mouse(game: Game, x, y: cint) =
         for hi in countup(0, high(pok.ddrArrows)):
           let hitbox = hitbox(pok, hi, winsz)
           if (x, y) in hitbox:
-            let arrows = pok.ddrArrows[hi].arrows
+            let arrows = pok.ddrArrows[hi].values
             for i in countup(0, high(arrows)):
               let arrow = arrow(pok, hi, i, winsz)
               if (x, y) in arrow:
@@ -143,28 +143,44 @@ proc listen(game: Game) =
     of TextInput:
       if game.state.kind == gsPokemon and game.state.pokemon.kind == Troll:
         stopTextInput()
-        withSurface renderUtf8Solid(game.font, cast[ptr cstring](addr event.text.text)[], colorBlack):
+        withSurface renderUtf8Solid(game.font, cast[cstring](addr event.text.text), colorBlack):
           game.state.pokemon.sudokuCharacterTexture = createTextureFromSurface(game.renderer, it)
     else: discard
 
 proc tick(game: Game) =
   case stateKinds[game.state.kind]
   of gskPokemon:
-    if game.state.pokemonText.counter <= 0:
-      let d = uint32(game.state.pokemonText.delay.float * rand(2.0))
-      game.state.pokemonText.counter = d
-      game.state.pokemonText.delay = d
-    else:
-      dec game.state.pokemonText.counter
-      return
-    let
-      real = game.state.pokemonText.real
-      rendered = game.state.pokemonText.rendered
-    if rendered.len < real.len:
-      let texture = game.renderText(real[rendered.len])
-      if texture.isNil:
-        quit "Couldn't blah, error: " & $getError()
-      game.state.pokemonText.rendered.add(texture)
+    if game.state.pokemonText.real.len > 0:
+      if game.state.pokemonText.counter <= 0:
+        let d = uint32(game.state.pokemonText.delay.float * rand(2.0))
+        game.state.pokemonText.counter = d
+        game.state.pokemonText.delay = d
+      else:
+        dec game.state.pokemonText.counter
+        return
+      let
+        real = game.state.pokemonText.real
+        rendered = game.state.pokemonText.rendered
+      if rendered.len < real.len:
+        let texture = game.renderText(real[rendered.len])
+        if texture.isNil:
+          quit "Couldn't blah, error: " & $getError()
+        game.state.pokemonText.rendered.add(texture)
+    let pok = game.state.pokemon
+    case pok.kind
+    of Yourmurderguy, `Ethereal God`:
+      for hi, hiarr in pok.ddrArrows:
+        for i, arr in hiarr.values:
+          var h: cint
+          hiarr.arrow.queryTexture(nil, nil, nil, addr h)
+          if arr >= 720 + h:
+            pok.ddrArrows[hi].values.del(i)
+          else:
+            inc pok.ddrArrows[hi].values[i], 5
+      if pok.ddrArrows.len != 0 and rand(40) == 15:
+        let index = rand(pok.ddrArrows.high)
+        pok.ddrArrows[index].values.add(0)
+    else: discard
   else: discard
 
 proc render(game: Game) =
@@ -176,27 +192,32 @@ proc render(game: Game) =
     game.draw(game.state.dialog,
       dest = rect(0, 0, ww, wh))
   of gskPokemon:
-    let (ww, wh) = game.window.getSize()
+    let wsz = game.window.getSize()
+    let (ww, wh) = wsz
     let (aww, awh) = (ww div 2, wh div 2)
     game.draw(game.state.pokemonTexture, rect(aww, 0, aww, awh))
     game.draw(game.state.pokemonTextbox, rect(0, awh, ww, awh))
+    let text = game.state.pokemonText
+    if text.rendered.len != 0:
+      var
+        x: cint = 50
+        y: cint = 50 + awh
+      for r in text.rendered:
+        var rw, rh: cint
+        r.queryTexture(nil, nil, addr rw, addr rh)
+        if rw + x >= ww:
+          x = 50
+          y += rh
+        #echo "x: ", x, ", y: ", y, ", width: ", rw, ", height: ", rh
+        game.draw(r, rect(x, y, rw, rh))
+        x += rw
     let pok = game.state.pokemon
     case pok.kind
     of Yourmurderguy, `Ethereal God`:
-      let text = game.state.pokemonText
-      if text.rendered.len != 0:
-        var
-          x: cint = 50
-          y: cint = 50 + awh
-        for r in text.rendered:
-          var rw, rh: cint
-          r.queryTexture(nil, nil, addr rw, addr rh)
-          if rw + x >= ww:
-            x = 50
-            y += rh
-          #echo "x: ", x, ", y: ", y, ", width: ", rw, ", height: ", rh
-          game.draw(r, rect(x, y, rw, rh))
-          x += rw
+      for hi, hiarr in pok.ddrArrows:
+        game.draw(hiarr.hitbox, hitbox(pok, hi, wsz))
+        for i, arr in hiarr.values:
+          game.draw(hiarr.arrow, arrow(pok, hi, i, wsz))
     else: discard
   else: discard
   game.renderer.present()
@@ -224,11 +245,14 @@ proc main =
   discard openAudio(0, 0, 2, 4096)
   game.update(gsMenu)
 
+  var lastFrameTime = cpuTime()
+
   while game.state.kind != gsDone:
     game.listen()
-    game.tick()
-    game.render()
-    delay(17)
+    if cpuTime() - lastFrameTime >= (1 / 60):
+      game.tick()
+      game.render()
+      lastFrameTime = cpuTime()
 
   if not game.currentAudio.isNil:
     freeMusic(game.currentAudio)

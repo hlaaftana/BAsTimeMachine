@@ -93,7 +93,7 @@ type
   Pokemon* = ref object
     case kind*: PokemonKind
     of Yourmurderguy, `Ethereal God`:
-      ddrArrows*: seq[tuple[key: Scancode, hitbox: TexturePtr, arrows: seq[tuple[texture: TexturePtr, value: int]]]]
+      ddrArrows*: seq[tuple[key: Scancode, arrow, hitbox: TexturePtr, values: seq[int]]]
       ddrScore*, ddrCount*: int
     of Troll:
       sudokuTexture*: TexturePtr
@@ -129,29 +129,19 @@ const
   colorWhite* = color(255, 255, 255, 255)
   defaultText* = PokemonText(real: "", rendered: @[])
 
-#[var
-  doneStateVal {.threadvar.}: State
-  noneStateVal {.threadvar.}: State
-
-template doneState*: State =
-  bind doneStateVal
-  if unlikely(doneStateVal.isNil):
-    doneStateVal = State(kind: gsDone)
-  doneStateVal
-
-template noneState*: State =
-  bind noneStateVal
-  if unlikely(noneStateVal.isNil):
-    doneStateVal = State(kind: gsDone)
-  noneStateVal]#
-
+defaultVar noneState, State(kind: gsNone)
 defaultVar doneState, State(kind: gsDone)
+
+proc ddrData*(kind: PokemonKind): seq[DdrData] =
+  result = case kind
+  of Yourmurderguy:
+    ddrYourmurderguyData
+  of `Ethereal God`:
+    ddrEtherealGodData
+  else: nil
 
 proc newPokemonText*(text: string, delay: uint32 = 0): PokemonText =
   PokemonText(real: text, rendered: newSeqOfCap[TexturePtr](text.len), delay: delay)
-
-proc `/`*(a, b: Point): Point =
-  (a[0] div b[0], a[1] div b[1])
 
 proc hitbox*(pok: Pokemon, i: int, windowSize: Point): Rect =
   let tex = pok.ddrArrows[i].hitbox
@@ -164,12 +154,12 @@ proc hitbox*(pok: Pokemon, i: int, windowSize: Point): Rect =
 
 proc arrow*(pok: Pokemon, hi, i: int, windowSize: Point): Rect =
   let arr = pok.ddrArrows[hi]
-  let it = arr.arrows[i]
+  let it = arr.values[i]
   var w, h: cint
-  it.texture.queryTexture(nil, nil, addr w, addr h)
+  arr.arrow.queryTexture(nil, nil, addr w, addr h)
   let
     startX: cint = cint((5 + hi * w) * 1080) div windowSize[0]
-    startY: cint = cint((715 - it.value) * 720) div windowSize[1]
+    startY: cint = cint((720 - it) * 720) div windowSize[1]
   result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])
 
 proc sudoku*(pok: Pokemon, windowSize: Point): Rect =
