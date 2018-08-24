@@ -97,12 +97,13 @@ type
       ddrScore*, ddrCount*: int
     of Troll:
       sudokuTexture*: TexturePtr
+      sudokuDelay*: int
       sudokuCharacterTexture*: TexturePtr
     of Roy:
       ourHealth*, royHealth*: int
     of Morty:
       chessBoard*: chess.Board
-      chessPieceTextures*: array[Pawn..King, (TexturePtr, TexturePtr)]
+      chessPieceTextures*: array[Pawn..King, TexturePtr]
 
   State* = ref object
     case kind*: GameState
@@ -148,9 +149,9 @@ proc hitbox*(pok: Pokemon, i: int, windowSize: Point): Rect =
   var w, h: cint
   tex.queryTexture(nil, nil, addr w, addr h)
   let
-    startX: cint = cint((5 + i * w) * 1080) div windowSize[0]
-    startY: cint = cint(5 * 720) div windowSize[1]
-  result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])
+    startX: cint = cint((5 + i * w) * windowSize[0]) div 1080
+    startY: cint = cint(5 * windowSize[1]) div 720
+  result = rect(startX, startY, (w * windowSize[0]) div 1080, (h * windowSize[1]) div 720)
 
 proc arrow*(pok: Pokemon, hi, i: int, windowSize: Point): Rect =
   let arr = pok.ddrArrows[hi]
@@ -158,17 +159,17 @@ proc arrow*(pok: Pokemon, hi, i: int, windowSize: Point): Rect =
   var w, h: cint
   arr.arrow.queryTexture(nil, nil, addr w, addr h)
   let
-    startX: cint = cint((5 + hi * w) * 1080) div windowSize[0]
-    startY: cint = cint((720 - it) * 720) div windowSize[1]
-  result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])
+    startX: cint = cint((5 + hi * w) * windowSize[0]) div 1080
+    startY: cint = cint((720 - it) * windowSize[1]) div 720
+  result = rect(startX, startY, (w * windowSize[0]) div 1080, (h * windowSize[1]) div 720)
 
 proc sudoku*(pok: Pokemon, windowSize: Point): Rect =
   var w, h: cint
   pok.sudokuTexture.queryTexture(nil, nil, addr w, addr h)
   let
-    startX: cint = cint((540 - (w div 2)) * 1080) div windowSize[0]
-    startY: cint = cint((360 - (h div 2)) * 720) div windowSize[1]
-  result = rect(startX, startY, (w * 1080) div windowSize[0], (h * 720) div windowSize[1])
+    startX: cint = cint((540 - (w div 2)) * windowSize[0]) div 1080
+    #startY: cint = cint((360 - (h div 2)) * windowSize[1]) div 720
+  result = rect(startX, 0, (w * windowSize[0]) div 1080, (h * windowSize[1]) div 720)
 
 proc loadTexture*(game: Game, image: cstring): TexturePtr =
   withSurface sdlimage.load(image):

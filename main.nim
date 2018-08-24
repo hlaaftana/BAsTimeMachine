@@ -65,7 +65,7 @@ proc progress(game: Game) =
     of Troll:
       let p = pokemonData[pok.kind]
       if pok.sudokuTexture.isNil:
-        game.state.pokemonText = newPokemonText(p.text[1], 120)
+        game.state.pokemonText = newPokemonText(p.text[1], 70)
         pok.sudokuTexture = game.loadTexture(sudokuImage)
         startTextInput()
       else:
@@ -74,9 +74,9 @@ proc progress(game: Game) =
   else: discard
 
 proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
-  pok.ddrScore += cint(abs(hy - ay) * 720) div windowSize[1]
+  pok.ddrScore += cint(abs(hy - ay) * windowSize[1]) div 720
   pok.ddrArrows[hi].values.del(i)
-  if pok.ddrCount >= 41:
+  if pok.ddrCount >= (if pok.kind == Yourmurderguy: 41 else: 4):
     game.state.pokemonText = newPokemonText(pokemonData[pok.kind].text[1] % $pok.ddrScore)
     pok.ddrArrows = @[]
   else:
@@ -101,6 +101,14 @@ proc key(game: Game, code: Scancode) =
             if ah.y in range or (ah.y + ah.h) in range:
               clearDdrArrow(game, pok, hi, i, hit.y, ah.y, winsz)
               return
+    of Troll:
+      if not pok.sudokuTexture.isNil and pok.sudokuCharacterTexture.isNil:
+        let t = getScancodeName(code)
+        echo t
+        withSurface renderUtf8Solid(game.font, t, colorBlack):
+          game.state.pokemon.sudokuCharacterTexture = createTextureFromSurface(game.renderer, it)
+        game.state.pokemonText = newPokemonText(pokemonData[Troll].text[2 + ord(t[0] notin {'0'..'9'})])
+        return 
     else: discard
     if game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
       game.progress()
@@ -140,11 +148,6 @@ proc listen(game: Game) =
       let ev = event.button
       if ev.button == ButtonLeft:
         game.mouse(ev.x, ev.y)
-    of TextInput:
-      if game.state.kind == gsPokemon and game.state.pokemon.kind == Troll:
-        stopTextInput()
-        withSurface renderUtf8Solid(game.font, cast[cstring](addr event.text.text), colorBlack):
-          game.state.pokemon.sudokuCharacterTexture = createTextureFromSurface(game.renderer, it)
     else: discard
 
 proc tick(game: Game) =
@@ -200,15 +203,16 @@ proc render(game: Game) =
     let text = game.state.pokemonText
     if text.rendered.len != 0:
       var
-        x: cint = 50
-        y: cint = 50 + awh
+        x: cint = 50 * ww div 1080
+        y: cint = (50 * wh div 720) + awh
       for r in text.rendered:
         var rw, rh: cint
         r.queryTexture(nil, nil, addr rw, addr rh)
+        rw = rw * ww div 1080
+        rh = rh * wh div 720
         if rw + x >= ww:
-          x = 50
+          x = 50 * ww div 1080
           y += rh
-        #echo "x: ", x, ", y: ", y, ", width: ", rw, ", height: ", rh
         game.draw(r, rect(x, y, rw, rh))
         x += rw
     let pok = game.state.pokemon
@@ -218,6 +222,11 @@ proc render(game: Game) =
         game.draw(hiarr.hitbox, hitbox(pok, hi, wsz))
         for i, arr in hiarr.values:
           game.draw(hiarr.arrow, arrow(pok, hi, i, wsz))
+    of Troll:
+      if not pok.sudokuTexture.isNil:
+        game.draw(pok.sudokuTexture, sudoku(pok, wsz))
+      if not pok.sudokuCharacterTexture.isNil:
+        game.draw(pok.sudokuCharacterTexture, sudoku(pok, wsz))
     else: discard
   else: discard
   game.renderer.present()
