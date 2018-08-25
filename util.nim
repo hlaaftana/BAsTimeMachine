@@ -26,3 +26,9 @@ proc font*(name: cstring, size: cint): FontPtr =
 proc toCstring*(c: char): cstring =
   var res = [c, '\0']
   result = cast[cstring](addr res)
+
+template modsHeldDown*: bool =
+  (getModState().cint and (
+    KMOD_LCTRL.cint or KMOD_RCTRL.cint or
+    KMOD_LSHIFT.cint or KMOD_RSHIFT.cint or
+    KMOD_LALT.cint or KMOD_RALT.cint)) != 0

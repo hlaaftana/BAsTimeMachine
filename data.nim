@@ -95,6 +95,8 @@ type
     of Yourmurderguy, `Ethereal God`:
       ddrArrows*: seq[tuple[key: Scancode, arrow, hitbox: TexturePtr, values: seq[int]]]
       ddrScore*, ddrCount*: int
+      ddrSoundEffects*: seq[ChunkPtr]
+      ddrIndicators*: seq[(cstring, cint)]
     of Troll:
       sudokuTexture*: TexturePtr
       sudokuDelay*: int
@@ -144,6 +146,9 @@ proc ddrData*(kind: PokemonKind): seq[DdrData] =
 proc newPokemonText*(text: string, delay: uint32 = 0): PokemonText =
   PokemonText(real: text, rendered: newSeqOfCap[TexturePtr](text.len), delay: delay)
 
+proc isRendered*(text: PokemonText): bool =
+  text.real.len == text.rendered.len
+
 proc hitbox*(pok: Pokemon, i: int, windowSize: Point): Rect =
   let tex = pok.ddrArrows[i].hitbox
   var w, h: cint
@@ -171,16 +176,24 @@ proc sudoku*(pok: Pokemon, windowSize: Point): Rect =
     #startY: cint = cint((360 - (h div 2)) * windowSize[1]) div 720
   result = rect(startX, 0, (w * windowSize[0]) div 1080, (h * windowSize[1]) div 720)
 
+proc ddrIndicator*(windowSize: Point, val: cint): Rect =
+  let width: cint = ((100 - val) * windowSize[0]) div 1080
+  let height: cint = ((40 - ((val * 2) div 5)) * windowSize[1]) div 720
+  result = rect((windowSize[0] * 13) div 16, (windowSize[1] * 2) div 7, width, height)
+
 proc loadTexture*(game: Game, image: cstring): TexturePtr =
   withSurface sdlimage.load(image):
     if unlikely(it.isNil):
       quit "Couldn't load texture " & $image & ", error: " & $getError()
     result = createTextureFromSurface(game.renderer, it)
 
+proc stopMusic*(game: Game) =
+  discard haltMusic()
+  freeMusic(game.currentMusic)
+
 proc setMusic*(game: Game, file: cstring) =
   if not game.currentMusic.isNil:
-    discard haltMusic()
-    freeMusic(game.currentMusic)
+    game.stopMusic()
   game.currentMusic = loadMus(file)
   if unlikely(game.currentMusic.isNil):
     quit "Couldn't load music " & $file & ", error: " & $getError()
@@ -191,9 +204,8 @@ template loopMusic*(game: Game) =
 template playMusic*(game: Game, loops = 1) =
   discard playMusic(game.currentMusic, loops)
 
-proc playSound*(file: cstring) =
-  let mus = loadWav(file)
-  discard playChannel(-1, mus, 1)
+template playSound*(chunk: ChunkPtr) =
+  discard playChannel(-1, chunk, 0)
 
 proc draw*(game: Game, texture: TexturePtr, src, dest: Rect) =
   var

@@ -29,8 +29,11 @@ proc initiateDdr(game: Game, pok: Pokemon) =
   of `Ethereal God`:
     game.setMusic("res/ddr/ethereal god.mp3")
   else: discard
+  game.loopMusic()
+  pok.ddrIndicators.newSeq(0)
+  pok.ddrSoundEffects.newSeq(5)
   let data = ddrData(pok.kind)
-  pok.ddrArrows = newSeq[type(pok.ddrArrows[0])](data.len)
+  pok.ddrArrows.newSeq(data.len)
   for i, d in data:
     pok.ddrArrows[i] = (d.key, game.loadTexture(d.hitboxImage), game.loadTexture(d.arrowImage), newSeq[int]())
 
@@ -73,21 +76,33 @@ proc progress(game: Game) =
         startTextInput()
       else:
         setPokemon(game, succ(pok.kind))
+    of Roy:
+      setPokemon(game, succ(pok.kind))
     else: discard
   else: discard
 
 proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
   let score = cint(abs(hy - ay) * 720) div windowSize[1]
+  template play(i, s) =
+    if pok.ddrSoundEffects[i].isNil:
+      pok.ddrSoundEffects[i] = loadWav(s)
+    playSound(pok.ddrSoundEffects[i])
+  var indicatorText: cstring
   case score
-  of 0..4:
-    playSound("res/ddr/perfect.wav")
-  of 5..14:
-    playSound("res/ddr/great.wav")
-  of 15..25:
-    playSound("res/ddr/good.wav")
+  of 0..24:
+    indicatorText = "Perfect!"
+    play(1, "res/ddr/perfect.wav")
+  of 25..74:
+    indicatorText = "Great!"
+    play(2, "res/ddr/great.wav")
+  of 75..130:
+    indicatorText = "Good!"
+    play(3, "res/ddr/good.wav")
   else:
-    playSound("res/ddr/ok.wav")
+    indicatorText = "OK!"
+    play(4, "res/ddr/ok.wav")
   pok.ddrScore += score
+  pok.ddrIndicators.add((indicatorText, 0.cint))
   pok.ddrArrows[hi].values.del(i)
   if pok.ddrCount >= (if pok.kind == Yourmurderguy: 41 else: 4):
     game.state.pokemonText = newPokemonText(pokemonData[pok.kind].text[1] % $pok.ddrScore)
@@ -98,7 +113,7 @@ proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSiz
 proc key(game: Game, code: Scancode) =
   case stateKinds[game.state.kind]
   of gskDialog:
-    if not bool(getModState().cint and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)): 
+    if not modsHeldDown: 
       game.progress()
   of gskPokemon:
     let pok = game.state.pokemon
@@ -119,9 +134,10 @@ proc key(game: Game, code: Scancode) =
         let t = getScancodeName(code)
         game.state.pokemon.sudokuCharacterTexture = game.renderText(t)
         game.state.pokemonText = newPokemonText(pokemonData[Troll].text[2 + ord(t[0] notin {'0'..'9'})])
-        return 
+        return
     else: discard
-    if game.state.pokemonText.real.len != 0 and not bool(getModState().cint and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
+    if game.state.pokemonText.real.len != 0 and
+      (game.state.pokemonText.isRendered or modsHeldDown):
       game.progress()
   else: discard
 
@@ -154,7 +170,14 @@ proc listen(game: Game) =
     of QuitEvent:
       game.state = doneState
     of KeyDown:
-      game.key(event.key.keysym.scancode)
+      # this can't handle left ctrl for me
+      {.rangeChecks: off.}
+      let sc =
+        event.
+          key.
+            keysym.
+              scancode
+      game.key(sc)
     of MouseButtonDown:
       let ev = event.button
       if ev.button == ButtonLeft:
@@ -189,12 +212,24 @@ proc tick(game: Game) =
           hiarr.arrow.queryTexture(nil, nil, nil, addr h)
           if arr >= 720 + h:
             pok.ddrArrows[hi].values.del(i)
-            playSound("res/ddr/miss.mp3")
+            pok.ddrIndicators.add((cstring"Miss!", 0.cint))
+            if pok.ddrSoundEffects[0].isNil:
+              pok.ddrSoundEffects[0] = loadWav("res/ddr/miss.wav")
+            playSound(pok.ddrSoundEffects[0])
           else:
             inc pok.ddrArrows[hi].values[i], 5
       if pok.ddrArrows.len != 0 and rand(40) == 15:
         let index = rand(pok.ddrArrows.high)
         pok.ddrArrows[index].values.add(0)
+      block:
+        var hig = len(pok.ddrIndicators)
+        var i = 0
+        while i < hig:
+          inc pok.ddrIndicators[i][1]
+          if pok.ddrIndicators[i][1] >= 100:
+            pok.ddrIndicators.del(i)
+            dec hig
+          inc i
     else: discard
   else: discard
 
@@ -234,6 +269,8 @@ proc render(game: Game) =
         game.draw(hiarr.hitbox, hitbox(pok, hi, wsz))
         for i, arr in hiarr.values:
           game.draw(hiarr.arrow, arrow(pok, hi, i, wsz))
+      for val in pok.ddrIndicators:
+        game.draw(game.renderText(val[0], color(216, 20, 145 + val[1], 255)), ddrIndicator(wsz, val[1]))
     of Troll:
       if not pok.sudokuTexture.isNil:
         game.draw(pok.sudokuTexture, sudoku(pok, wsz))
