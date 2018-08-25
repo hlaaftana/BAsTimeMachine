@@ -121,7 +121,7 @@ type
   Game* = ref object
     window*: WindowPtr
     renderer*: RendererPtr
-    currentAudio*: MusicPtr
+    currentMusic*: MusicPtr
     font*: FontPtr
     state*: State
 
@@ -177,19 +177,23 @@ proc loadTexture*(game: Game, image: cstring): TexturePtr =
       quit "Couldn't load texture " & $image & ", error: " & $getError()
     result = createTextureFromSurface(game.renderer, it)
 
-proc setAudio*(game: Game, file: cstring) =
-  if not game.currentAudio.isNil:
+proc setMusic*(game: Game, file: cstring) =
+  if not game.currentMusic.isNil:
     discard haltMusic()
-    freeMusic(game.currentAudio)
-  game.currentAudio = loadMus(file)
-  if unlikely(game.currentAudio.isNil):
-    quit "Couldn't load audio " & $file & ", error: " & $getError()
+    freeMusic(game.currentMusic)
+  game.currentMusic = loadMus(file)
+  if unlikely(game.currentMusic.isNil):
+    quit "Couldn't load music " & $file & ", error: " & $getError()
 
-template loopAudio*(game: Game) =
-  discard playMusic(game.currentAudio, -1)
+template loopMusic*(game: Game) =
+  discard playMusic(game.currentMusic, -1)
 
-template playAudio*(game: Game, loops = 1) =
-  discard playMusic(game.currentAudio, loops)
+template playMusic*(game: Game, loops = 1) =
+  discard playMusic(game.currentMusic, loops)
+
+proc playSound*(file: cstring) =
+  let mus = loadWav(file)
+  discard playChannel(-1, mus, 1)
 
 proc draw*(game: Game, texture: TexturePtr, src, dest: Rect) =
   var

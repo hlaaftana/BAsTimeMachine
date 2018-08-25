@@ -17,19 +17,22 @@ proc setPokemon(game: Game, pm: PokemonKind) =
   of Morty:
     game.state.pokemon.chessBoard.init()
   else: discard
-  game.setAudio(data.cry)
-  game.playAudio()
+  game.setMusic(data.cry)
+  game.playMusic()
 
 proc initiateDdr(game: Game, pok: Pokemon) =
   game.state.pokemonText = defaultText
   randomize()
   case pok.kind
-  of Yourmurderguy, `Ethereal God`:
-    let data = ddrData(pok.kind)
-    pok.ddrArrows = newSeq[type(pok.ddrArrows[0])](data.len)
-    for i, d in data:
-      pok.ddrArrows[i] = (d.key, game.loadTexture(d.hitboxImage), game.loadTexture(d.arrowImage), newSeq[int]())
+  of Yourmurderguy:
+    game.setMusic("res/ddr/yourmurderguy.mp3")
+  of `Ethereal God`:
+    game.setMusic("res/ddr/ethereal god.mp3")
   else: discard
+  let data = ddrData(pok.kind)
+  pok.ddrArrows = newSeq[type(pok.ddrArrows[0])](data.len)
+  for i, d in data:
+    pok.ddrArrows[i] = (d.key, game.loadTexture(d.hitboxImage), game.loadTexture(d.arrowImage), newSeq[int]())
 
 proc update(game: Game, newState: GameState) =
   game.state = State(kind: newState)
@@ -39,8 +42,8 @@ proc update(game: Game, newState: GameState) =
   of gskDialog:
     game.renderer.setDrawColor(data.dialogColor)
     game.state.dialog = game.loadTexture(data.dialogImage)
-    game.setAudio(data.dialogMusic)
-    game.loopAudio()
+    game.setMusic(data.dialogMusic)
+    game.loopMusic()
   of gskPokemon:
     randomize()
     game.state.pokemonTextbox = game.loadTexture(textboxImage)
@@ -74,7 +77,17 @@ proc progress(game: Game) =
   else: discard
 
 proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
-  pok.ddrScore += cint(abs(hy - ay) * windowSize[1]) div 720
+  let score = cint(abs(hy - ay) * 720) div windowSize[1]
+  case score
+  of 0..4:
+    playSound("res/ddr/perfect.wav")
+  of 5..14:
+    playSound("res/ddr/great.wav")
+  of 15..25:
+    playSound("res/ddr/good.wav")
+  else:
+    playSound("res/ddr/ok.wav")
+  pok.ddrScore += score
   pok.ddrArrows[hi].values.del(i)
   if pok.ddrCount >= (if pok.kind == Yourmurderguy: 41 else: 4):
     game.state.pokemonText = newPokemonText(pokemonData[pok.kind].text[1] % $pok.ddrScore)
@@ -85,7 +98,7 @@ proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSiz
 proc key(game: Game, code: Scancode) =
   case stateKinds[game.state.kind]
   of gskDialog:
-    if not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)): 
+    if not bool(getModState().cint and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)): 
       game.progress()
   of gskPokemon:
     let pok = game.state.pokemon
@@ -104,13 +117,11 @@ proc key(game: Game, code: Scancode) =
     of Troll:
       if not pok.sudokuTexture.isNil and pok.sudokuCharacterTexture.isNil:
         let t = getScancodeName(code)
-        echo t
-        withSurface renderUtf8Solid(game.font, t, colorBlack):
-          game.state.pokemon.sudokuCharacterTexture = createTextureFromSurface(game.renderer, it)
+        game.state.pokemon.sudokuCharacterTexture = game.renderText(t)
         game.state.pokemonText = newPokemonText(pokemonData[Troll].text[2 + ord(t[0] notin {'0'..'9'})])
         return 
     else: discard
-    if game.state.pokemonText.real.len != 0 and not bool(getModState() and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
+    if game.state.pokemonText.real.len != 0 and not bool(getModState().cint and (KMOD_CTRL or KMOD_SHIFT or KMOD_ALT)):
       game.progress()
   else: discard
 
@@ -178,6 +189,7 @@ proc tick(game: Game) =
           hiarr.arrow.queryTexture(nil, nil, nil, addr h)
           if arr >= 720 + h:
             pok.ddrArrows[hi].values.del(i)
+            playSound("res/ddr/miss.mp3")
           else:
             inc pok.ddrArrows[hi].values[i], 5
       if pok.ddrArrows.len != 0 and rand(40) == 15:
@@ -232,23 +244,27 @@ proc render(game: Game) =
   game.renderer.present()
 
 proc main =
-  assertBool sdl2.init(INIT_VIDEO or INIT_TIMER or INIT_EVENTS or INIT_AUDIO)
-  assertBool ttfInit()
+  if not sdl2.init(INIT_VIDEO or INIT_TIMER or INIT_EVENTS or INIT_AUDIO):
+    quit "Couldn't initialize SDL, " & $getError()
+  if not ttfInit():
+    quit "Couldn't initialize SDL font handling, " & $getError()
 
   defer: sdl2.quit()
 
-  assertBool setHint("SDL_RENDER_SCALE_QUALITY", "2")
+  if not setHint("SDL_RENDER_SCALE_QUALITY", "2"):
+    quit "Couldn't set SDL render scale quality, " & $getError()
 
   var game: Game
   new(game)
   game.window = createWindow(title = "BrokenAce's Time Machine",
     x = SDL_WINDOWPOS_CENTERED, y = SDL_WINDOWPOS_CENTERED,
     w = 1280, h = 720, flags = SDL_WINDOW_SHOWN or SDL_WINDOW_RESIZABLE)
-  assert(not game.window.isNil)
-
+  if game.window.isNil:
+    quit "Couldn't create window, " & $getError()
   game.renderer = game.window.createRenderer(index = -1,
     flags = Renderer_Accelerated or Renderer_PresentVsync)
-  assert(not game.renderer.isNil)
+  if game.renderer.isNil:
+    quit "Couldn't create renderer, " & $getError()
   game.font = font("Petscop Wide.ttf", 48)
 
   discard openAudio(0, 0, 2, 4096)
@@ -263,8 +279,8 @@ proc main =
       game.render()
       lastFrameTime = cpuTime()
 
-  if not game.currentAudio.isNil:
-    freeMusic(game.currentAudio)
+  if not game.currentMusic.isNil:
+    freeMusic(game.currentMusic)
     closeAudio()
   game.font.close()
   ttfQuit()

@@ -7,15 +7,6 @@ template defaultVar*(name, value): untyped {.dirty.} =
       `name val` = value
     `name val`
 
-template tap*(val, body): untyped =
-  var it {.inject.} = val
-  body
-  it
-
-template assertBool*(a): untyped =
-  let x = a
-  assert x
-
 template withSurface*(surf: SurfacePtr, body: untyped): untyped {.dirty.} =
   let it = surf
   if unlikely(it.isNil):
