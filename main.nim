@@ -161,6 +161,10 @@ proc mouse(game: Game, x, y: cint) =
                 clearDdrArrow(game, pok, hi, i, hitbox.y, arrow.y, winsz)
                 break bigger
     else: discard
+    if y >= game.window.getSize[1] div 2 and
+      game.state.pokemonText.real.len != 0 and
+      (game.state.pokemonText.isRendered or modsHeldDown):
+      game.progress()
   else: discard
 
 proc listen(game: Game) =
@@ -170,14 +174,7 @@ proc listen(game: Game) =
     of QuitEvent:
       game.state = doneState
     of KeyDown:
-      # this can't handle left ctrl for me
-      {.rangeChecks: off.}
-      let sc =
-        event.
-          key.
-            keysym.
-              scancode
-      game.key(sc)
+      game.key(event.key.keysym.scancode)
     of MouseButtonDown:
       let ev = event.button
       if ev.button == ButtonLeft:
