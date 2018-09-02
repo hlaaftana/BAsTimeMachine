@@ -1,14 +1,14 @@
-import sdl2, sdl2/[mixer, ttf], sdl2/image as sdlimage, /chess, /util
+import sdl2, sdl2/[mixer, ttf], sdl2/image as sdlimage, /chess, /util, random
 
 type
   PokemonKind* = enum
     Yourmurderguy, Troll, Roy, `Ethereal God`, Morty
 
   GameState* = enum
-    gsNone, gsDone, gsMenu, gsIntro, gsPokemon, gsOperation
+    gsNone, gsDone, gsMenu, gsIntro, gsPokemon, gs2d
 
   GameStateKind* = enum
-    gskNoOp, gskDialog, gskPokemon, gskOperation
+    gskNoOp, gskDialog, gskPokemon, gsk2d
 
 type
   DdrData* = tuple[key: Scancode, hitboxImage, arrowImage: string]
@@ -31,7 +31,7 @@ type
       # so i changed it to a ref object and it gave a SIGSEGV
       # so i made it a separate const
       # UPDATE: THEN i tried putting in a string but it gives an empty string instead of what i set it to.
-    of gskOperation:
+    of gsk2d:
       discard
 
 const
@@ -42,7 +42,7 @@ const
     GameStateData(kind: gskDialog, dialogImage: "res/intro.png",
       dialogMusic: "res/intro.mp3", dialogColor: color(255, 255, 255, 255)),
     GameStateData(kind: gskPokemon),
-    GameStateData(kind: gskOperation)]
+    GameStateData(kind: gsk2d)]
 
   textboxImage*: cstring = "res/textbox.png"
   sudokuImage*: cstring = "res/sudoku.png"
@@ -94,7 +94,7 @@ type
     case kind*: PokemonKind
     of Yourmurderguy, `Ethereal God`:
       ddrArrows*: seq[tuple[key: Scancode, arrow, hitbox: TexturePtr, values: seq[int]]]
-      ddrScore*, ddrCount*: int
+      ddrScore*, ddrCount*, ddrSpeed*: int
       ddrSoundEffects*: seq[ChunkPtr]
       ddrIndicators*: seq[(cstring, cint)]
     of Troll:
@@ -102,10 +102,12 @@ type
       sudokuDelay*: int
       sudokuCharacterTexture*: TexturePtr
     of Roy:
-      ourHealth*, royHealth*: int
+      discard
     of Morty:
       chessBoard*: chess.Board
-      chessPieceTextures*: array[Pawn..King, TexturePtr]
+      chessAvailable*: set[uint8]
+      chessSelected*: uint8
+      chessPieceTexture*, chessBackground*: TexturePtr
 
   State* = ref object
     case kind*: GameState
@@ -116,7 +118,8 @@ type
       pokemon*: Pokemon
       pokemonTexture*, pokemonTextbox*: TexturePtr
       pokemonText*: PokemonText
-    of gsOperation:
+      pokemonRand*: Rand
+    of gs2d:
       discard
     else: discard
 
@@ -124,6 +127,7 @@ type
     window*: WindowPtr
     renderer*: RendererPtr
     currentMusic*: MusicPtr
+    numTicks*: int
     font*: FontPtr
     state*: State
 
@@ -173,13 +177,15 @@ proc sudoku*(pok: Pokemon, windowSize: Point): Rect =
   pok.sudokuTexture.queryTexture(nil, nil, addr w, addr h)
   let
     startX: cint = cint((540 - (w div 2)) * windowSize[0]) div 1080
-    #startY: cint = cint((360 - (h div 2)) * windowSize[1]) div 720
   result = rect(startX, 0, (w * windowSize[0]) div 1080, (h * windowSize[1]) div 720)
 
 proc ddrIndicator*(windowSize: Point, val: cint): Rect =
   let width: cint = ((100 - val) * windowSize[0]) div 1080
   let height: cint = ((40 - ((val * 2) div 5)) * windowSize[1]) div 720
   result = rect((windowSize[0] * 13) div 16, (windowSize[1] * 2) div 7, width, height)
+
+proc chessSquare*(windowSize: Point, x, y: int): Rect =
+  result = rect(cint(windowSize[0] * (340 + x * 50)) div 1080, cint(windowSize[1] * (55 + y * 50)) div 720, (windowSize[0] * 5) div 108, (windowSize[1] * 5) div 72)
 
 proc loadTexture*(game: Game, image: cstring): TexturePtr =
   withSurface sdlimage.load(image):
@@ -198,6 +204,10 @@ proc setMusic*(game: Game, file: cstring) =
   if unlikely(game.currentMusic.isNil):
     quit "Couldn't load music " & $file & ", error: " & $getError()
 
+proc destroy*(text: PokemonText) =
+  for r in text.rendered:
+    r.destroy()
+
 template loopMusic*(game: Game) =
   discard playMusic(game.currentMusic, -1)
 
@@ -207,19 +217,25 @@ template playMusic*(game: Game, loops = 1) =
 template playSound*(chunk: ChunkPtr) =
   discard playChannel(-1, chunk, 0)
 
+template draw*(game: Game, texture: TexturePtr, src, dest: var Rect) =
+  game.renderer.copy(texture, addr src, addr dest)
+
 proc draw*(game: Game, texture: TexturePtr, src, dest: Rect) =
   var
     src = src
     dest = dest
-  game.renderer.copy(texture, addr src, addr dest)
+  game.draw(texture, src, dest)
 
-proc draw*(game: Game, texture: TexturePtr, dest: Rect) =
+proc draw*(game: Game, texture: TexturePtr, dest: var Rect) =
   var w, h: cint
   texture.queryTexture(nil, nil, addr w, addr h)
   var
     src = rect(0, 0, w, h)
-    dest = dest
-  game.renderer.copy(texture, addr src, addr dest)
+  game.draw(texture, src, dest)
+
+proc draw*(game: Game, texture: TexturePtr, dest: Rect) =
+  var dest = dest
+  game.draw(texture, dest)
 
 proc draw*(game: Game, texture: TexturePtr, x, y: cint) =
   var w, h: cint
@@ -242,3 +258,15 @@ proc renderText*[T: char | cstring](game: Game, text: T,
 
 template renderText*[T](game: Game, text: T, color = colorBlack): TexturePtr =
   renderText(game, text, game.font, color)
+
+proc `=destroy`*(texture: var TexturePtr) =
+  echo "freeing texture"
+  texture.destroy()
+
+proc `=destroy`*(texture: var ChunkPtr) =
+  echo "freeing wav"
+  texture.freeChunk()
+
+proc `=destroy`*(texture: var MusicPtr) =
+  echo "freeing music"
+  texture.freeMusic()

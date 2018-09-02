@@ -56,8 +56,7 @@ proc move*(chess: var Board, x, y, nx, ny: int): Square =
 
 iterator pieces*(chess: Board): tuple[x, y: int, square: Square] =
   for i, it in BaseBoard(chess):
-    if it.piece != NoPiece:
-      yield (i div height, i mod height, it)
+    yield (i div height, i mod height, it)
 
 iterator moves*(chess: Board, x, y: int): tuple[x, y: int] =
   template check(a, b; ap: static[bool] = true, bp: static[bool] = true): untyped =

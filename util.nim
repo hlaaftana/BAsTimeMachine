@@ -32,3 +32,9 @@ template modsHeldDown*: bool =
     KMOD_LCTRL.cint or KMOD_RCTRL.cint or
     KMOD_LSHIFT.cint or KMOD_RSHIFT.cint or
     KMOD_LALT.cint or KMOD_RALT.cint)) != 0
+
+template rgb*(x: int32): Color =
+  cast[Color]((x shl 8) or 0xFF)
+
+template rgba*(x: int32): Color =
+  cast[Color](x)

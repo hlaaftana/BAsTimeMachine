@@ -7,22 +7,15 @@ import /chess, /data, /util
 proc setPokemon(game: Game, pm: PokemonKind) =
   let data = pokemonData[pm]
   assert game.state.kind == gsPokemon
-  game.state.pokemonTexture = game.loadTexture(data.image)
+  game.state.pokemonRand = initRand(game.numTicks.int64)
+  game.state.pokemonTexture = loadTexture(game, data.image)
   game.state.pokemon = Pokemon(kind: pm)
   game.state.pokemonText = newPokemonText(data.text[0], 60)
-  case pm
-  of Roy:
-    game.state.pokemon.ourHealth = 50
-    game.state.pokemon.royHealth = 5
-  of Morty:
-    game.state.pokemon.chessBoard.init()
-  else: discard
   game.setMusic(data.cry)
   game.playMusic()
 
 proc initiateDdr(game: Game, pok: Pokemon) =
   game.state.pokemonText = defaultText
-  randomize()
   case pok.kind
   of Yourmurderguy:
     game.setMusic("res/ddr/yourmurderguy.mp3")
@@ -48,23 +41,36 @@ proc update(game: Game, newState: GameState) =
     game.setMusic(data.dialogMusic)
     game.loopMusic()
   of gskPokemon:
-    randomize()
     game.state.pokemonTextbox = game.loadTexture(textboxImage)
     game.setPokemon(low(PokemonKind))
-  of gskOperation:
+  of gsk2d:
     discard
+
+proc moveBlack(game: Game, board: var chess.Board) =
+  var allMoves: seq[(uint8, uint8)] = @[]
+  for x, y, sq in board.pieces:
+    if sq.side == Black:
+      for mx, my in board.moves(x, y):
+        allMoves.add((chessIndex(x, y).uint8, chessIndex(mx, my).uint8))
+  let (mo, mn) = rand(game.state.pokemonRand, allMoves)
+  BaseBoard(board)[mn] = BaseBoard(board)[mo]
+  BaseBoard(board)[mo] = (NoPiece, NoSide)
 
 proc progress(game: Game) =
   case game.state.kind
   of gsMenu:
+    game.state.dialog.destroy()
     game.update(gsIntro)
   of gsIntro:
+    game.state.dialog.destroy()
     game.update(gsPokemon)
   of gsPokemon:
+    game.state.pokemonText.destroy()
     let pok = game.state.pokemon
     case pok.kind
     of Yourmurderguy, `Ethereal God`:
       if pok.ddrCount == 0:
+        pok.ddrSpeed = 5 # you keep the speed if you initiate again
         initiateDdr(game, pok)
       else:
         setPokemon(game, succ(pok.kind))
@@ -75,10 +81,21 @@ proc progress(game: Game) =
         pok.sudokuTexture = game.loadTexture(sudokuImage)
         startTextInput()
       else:
+        pok.sudokuTexture.destroy()
+        pok.sudokuCharacterTexture.destroy()
         setPokemon(game, succ(pok.kind))
     of Roy:
       setPokemon(game, succ(pok.kind))
-    else: discard
+    of Morty:
+      if pok.chessPieceTexture.isNil:
+        game.state.pokemonText = defaultText
+        pok.chessBoard.init()
+        pok.chessPieceTexture = loadTexture(game, "res/diamond.png")
+        pok.chessBackground = loadTexture(game, "res/m.png")
+        game.setMusic("res/chess.mp3")
+        game.loopMusic()
+      else:
+        game.update(gs2d)
   else: discard
 
 proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
@@ -106,7 +123,12 @@ proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSiz
   pok.ddrArrows[hi].values.del(i)
   if pok.ddrCount >= (if pok.kind == Yourmurderguy: 41 else: 4):
     game.state.pokemonText = newPokemonText(pokemonData[pok.kind].text[1] % $pok.ddrScore)
+    for arr in pok.ddrArrows:
+      arr.arrow.destroy()
+      arr.hitbox.destroy()
     pok.ddrArrows = @[]
+    for sfx in pok.ddrSoundEffects:
+      sfx.freeChunk()
   else:
     inc pok.ddrCount
 
@@ -129,6 +151,29 @@ proc key(game: Game, code: Scancode) =
             if ah.y in range or (ah.y + ah.h) in range:
               clearDdrArrow(game, pok, hi, i, hit.y, ah.y, winsz)
               return
+      if game.state.pokemonText.real.len == 0:
+        case code
+        of SDL_SCANCODE_S:
+          pok.ddrScore += 666
+        of SDL_SCANCODE_B:
+          pok.ddrArrows.delete(rand(game.state.pokemonRand, pok.ddrArrows.high))
+        of SDL_SCANCODE_A:
+          let d = rand(game.state.pokemonRand, ddrData(pok.kind))
+          let x = (d.key, game.loadTexture(d.hitboxImage), game.loadTexture(d.arrowImage), newSeq[int]())
+          pok.ddrArrows.add(x)
+        of SDL_SCANCODE_R:
+          initiateDdr(game, pok)
+        of SDL_SCANCODE_D:
+          game.update(gsIntro)
+          return
+        of SDL_SCANCODE_M:
+          game.update(gsMenu)
+          return
+        of SDL_SCANCODE_L:
+          pok.ddrSpeed = pok.ddrSpeed div 2
+        of SDL_SCANCODE_P:
+          dec pok.ddrCount
+        else: discard
     of Troll:
       if not pok.sudokuTexture.isNil and pok.sudokuCharacterTexture.isNil:
         let t = getScancodeName(code)
@@ -146,10 +191,10 @@ proc mouse(game: Game, x, y: cint) =
   of gskDialog:
     game.progress()
   of gskPokemon:
+    let winsz = game.window.getSize()
     let pok = game.state.pokemon
     case pok.kind
     of Yourmurderguy, `Ethereal God`:
-      let winsz = game.window.getSize()
       block bigger:
         for hi in countup(0, high(pok.ddrArrows)):
           let hitbox = hitbox(pok, hi, winsz)
@@ -160,8 +205,26 @@ proc mouse(game: Game, x, y: cint) =
               if (x, y) in arrow:
                 clearDdrArrow(game, pok, hi, i, hitbox.y, arrow.y, winsz)
                 break bigger
+    of Morty:
+      for px, py, square in pok.chessBoard.pieces:
+        if (x.cint, y.cint) in chessSquare(winsz, px, py):
+          let ind = chessIndex(px, py).uint8
+          if square.side == White:
+            pok.chessSelected = ind
+            for mx, my in pok.chessBoard.moves(px, py):
+              pok.chessAvailable.incl(chessIndex(mx, my).uint8)
+            break
+          elif ind in pok.chessAvailable:
+            pok.chessAvailable = {}
+            if BaseBoard(pok.chessBoard)[ind].piece == King:
+              game.progress()
+              return
+            BaseBoard(pok.chessBoard)[ind] = BaseBoard(pok.chessBoard)[pok.chessSelected]
+            BaseBoard(pok.chessBoard)[pok.chessSelected] = (NoPiece, NoSide)
+            moveBlack(game, pok.chessBoard)
+            break
     else: discard
-    if y >= game.window.getSize[1] div 2 and
+    if y >= winsz[1] div 2 and
       game.state.pokemonText.real.len != 0 and
       (game.state.pokemonText.isRendered or modsHeldDown):
       game.progress()
@@ -186,7 +249,7 @@ proc tick(game: Game) =
   of gskPokemon:
     if game.state.pokemonText.real.len > 0:
       if game.state.pokemonText.counter <= 0:
-        let d = uint32(game.state.pokemonText.delay.float * rand(2.0))
+        let d = uint32(game.state.pokemonText.delay.float * rand(game.state.pokemonRand, 2.0))
         game.state.pokemonText.counter = d
         game.state.pokemonText.delay = d
       else:
@@ -214,9 +277,9 @@ proc tick(game: Game) =
               pok.ddrSoundEffects[0] = loadWav("res/ddr/miss.wav")
             playSound(pok.ddrSoundEffects[0])
           else:
-            inc pok.ddrArrows[hi].values[i], 5
-      if pok.ddrArrows.len != 0 and rand(40) == 15:
-        let index = rand(pok.ddrArrows.high)
+            inc pok.ddrArrows[hi].values[i], pok.ddrSpeed
+      if pok.ddrArrows.len != 0 and rand(game.state.pokemonRand, 40) == 15:
+        let index = rand(game.state.pokemonRand, pok.ddrArrows.high)
         pok.ddrArrows[index].values.add(0)
       block:
         var hig = len(pok.ddrIndicators)
@@ -229,6 +292,7 @@ proc tick(game: Game) =
           inc i
     else: discard
   else: discard
+  inc game.numTicks
 
 proc render(game: Game) =
   game.renderer.clear()
@@ -246,19 +310,16 @@ proc render(game: Game) =
     game.draw(game.state.pokemonTextbox, rect(0, awh, ww, awh))
     let text = game.state.pokemonText
     if text.rendered.len != 0:
-      var
-        x: cint = 50 * ww div 1080
-        y: cint = (50 * wh div 720) + awh
+      var rec = rect((50 * ww) div 1080, (50 * wh) div 720 + awh, 0, 0)
       for r in text.rendered:
-        var rw, rh: cint
-        r.queryTexture(nil, nil, addr rw, addr rh)
-        rw = rw * ww div 1080
-        rh = rh * wh div 720
-        if rw + x >= ww:
-          x = 50 * ww div 1080
-          y += rh
-        game.draw(r, rect(x, y, rw, rh))
-        x += rw
+        r.queryTexture(nil, nil, addr rec.w, addr rec.h)
+        rec.w = (rec.w * ww) div 1080
+        rec.h = (rec.h * wh) div 720
+        if rec.w + rec.x >= ww:
+          rec.x = 50 * ww div 1080
+          rec.y += rec.h
+        game.draw(r, rec)
+        rec.x += rec.w
     let pok = game.state.pokemon
     case pok.kind
     of Yourmurderguy, `Ethereal God`:
@@ -267,13 +328,31 @@ proc render(game: Game) =
         for i, arr in hiarr.values:
           game.draw(hiarr.arrow, arrow(pok, hi, i, wsz))
       for val in pok.ddrIndicators:
-        game.draw(game.renderText(val[0], color(216, 20, 145 + val[1], 255)), ddrIndicator(wsz, val[1]))
+        let r = game.renderText(val[0], color(216, 20, 145 + val[1], 255))
+        game.draw(r, ddrIndicator(wsz, val[1]))
+        r.destroy()
     of Troll:
       if not pok.sudokuTexture.isNil:
-        game.draw(pok.sudokuTexture, sudoku(pok, wsz))
-      if not pok.sudokuCharacterTexture.isNil:
-        game.draw(pok.sudokuCharacterTexture, sudoku(pok, wsz))
-    else: discard
+        var sud = sudoku(pok, wsz)
+        game.draw(pok.sudokuTexture, sud)
+        if not pok.sudokuCharacterTexture.isNil:
+          game.draw(pok.sudokuCharacterTexture, sud)
+    of Roy:
+      discard
+    of Morty:
+      for x, y, square in pok.chessBoard.pieces:
+        var sq = chessSquare(wsz, x, y)
+        if uint8(chessIndex(x, y)) in pok.chessAvailable:
+          discard pok.chessBackground.setTextureColorMod(255, 255, 0)
+        else:
+          let m = uint8(x + y) and 1
+          discard pok.chessBackground.setTextureColorMod(m * 189, m * 108 + 147, 150)
+        game.draw(pok.chessBackground, sq)
+        if square.piece != NoPiece:
+          let s = (2u8 - uint8(square.side)) * 255
+          discard pok.chessPieceTexture.setTextureColorMod(255, s, s)
+          #  quit "Could not set piece texture color mode" & $getError()
+          game.draw(pok.chessPieceTexture, sq)
   else: discard
   game.renderer.present()
 
@@ -313,9 +392,8 @@ proc main =
       game.render()
       lastFrameTime = cpuTime()
 
-  if not game.currentMusic.isNil:
-    freeMusic(game.currentMusic)
-    closeAudio()
+  game.stopMusic()
+  closeAudio()
   game.font.close()
   ttfQuit()
   game.window.destroy()
