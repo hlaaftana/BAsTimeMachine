@@ -98,9 +98,7 @@ type
       ddrSoundEffects*: seq[ChunkPtr]
       ddrIndicators*: seq[(cstring, cint)]
     of Troll:
-      sudokuTexture*: TexturePtr
-      sudokuDelay*: int
-      sudokuCharacterTexture*: TexturePtr
+      sudokuTexture*, sudokuCharacterTexture*: TexturePtr
     of Roy:
       discard
     of Morty:

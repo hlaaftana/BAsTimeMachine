@@ -210,6 +210,8 @@ proc mouse(game: Game, x, y: cint) =
         if (x.cint, y.cint) in chessSquare(winsz, px, py):
           let ind = chessIndex(px, py).uint8
           if square.side == White:
+            when false:
+              pok.chessAvailable = {}
             pok.chessSelected = ind
             for mx, my in pok.chessBoard.moves(px, py):
               pok.chessAvailable.incl(chessIndex(mx, my).uint8)
