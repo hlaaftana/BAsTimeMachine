@@ -5,10 +5,13 @@ type
     Yourmurderguy, Troll, Roy, `Ethereal God`, Morty
 
   GameState* = enum
-    gsNone, gsDone, gsMenu, gsIntro, gsPokemon, gs2d
+    gsNone, gsDone, gsMenu, gsIntro, gsPokemon, gs2d, gsEnding, gsCredits
 
   GameStateKind* = enum
-    gskNoOp, gskDialog, gskPokemon, gsk2d
+    gskNoOp, gskDialog, gskPokemon, gsk2d, gskCredits
+
+  PlayerMovement* = enum
+    pmUp, pmRight, pmLeft, pmRotate, pmRotateBackward
 
 type
   DdrData* = tuple[key: Scancode, hitboxImage, arrowImage: string]
@@ -33,16 +36,24 @@ type
       # UPDATE: THEN i tried putting in a string but it gives an empty string instead of what i set it to.
     of gsk2d:
       discard
+    of gskCredits:
+      discard
 
 const
+  colorBlack* = color(0, 0, 0, 255)
+  colorWhite* = color(255, 255, 255, 255)
+
   stateData*: array[low(GameState)..high(GameState), GameStateData] = [
     GameStateData(kind: gskNoOp), GameStateData(kind: gskNoOp),
     GameStateData(kind: gskDialog, dialogImage: "res/menu.png",
       dialogMusic: "res/menu.mp3", dialogColor: color(221, 247, 255, 255)),
     GameStateData(kind: gskDialog, dialogImage: "res/intro.png",
-      dialogMusic: "res/intro.mp3", dialogColor: color(255, 255, 255, 255)),
+      dialogMusic: "res/intro.mp3", dialogColor: colorWhite),
     GameStateData(kind: gskPokemon),
-    GameStateData(kind: gsk2d)]
+    GameStateData(kind: gsk2d),
+    GameStateData(kind: gskDialog, dialogImage: "res/ending.png",
+      dialogMusic: "res/ending.mp3", dialogColor: colorWhite),
+    GameStateData(kind: gskCredits)]
 
   textboxImage*: cstring = "res/textbox.png"
   sudokuImage*: cstring = "res/sudoku.png"
@@ -53,10 +64,7 @@ const
     (SDL_SCANCODE_RIGHT, "res/ddr/right_hitbox.png", "res/ddr/right_arrow.png"),
     (SDL_SCANCODE_SPACE, "res/ddr/space_hitbox.png", "res/ddr/space_arrow.png")]
   ddrEtherealGodData*: seq[DdrData] = @[
-    (SDL_SCANCODE_UP, "res/ddr/up_hitbox.png", "res/ddr/up_arrow.png"),
-    (SDL_SCANCODE_DOWN, "res/ddr/down_hitbox.png", "res/ddr/down_arrow.png"),
-    (SDL_SCANCODE_LEFT, "res/ddr/left_hitbox.png", "res/ddr/left_arrow.png"),
-    (SDL_SCANCODE_RIGHT, "res/ddr/right_hitbox.png", "res/ddr/right_arrow.png")]
+    (SDL_SCANCODE_7, "res/ddr/hat.png", "res/ddr/woo.png")]
 
   # if you think this should be in state data read above
   pokemonData*: array[low(PokemonKind)..high(PokemonKind), PokemonData] = [
@@ -65,13 +73,16 @@ const
     PokemonData(image: "res/pokemon/troll.png", cry: "res/pokemon/troll.mp3",
       text: @["Troll challenges you to a mental duel....", "Fill in this one box sudoku by typing a key!.....",
         "What? what's that? what did you type in? its a number? are you not brainy? No more",
-        "NO!!!!! MY POWERRRRRRRRR!!!!!!! DUDE!!!!!"]),
+        "The key is 7."]),
     PokemonData(image: "res/pokemon/roy.png", cry: "res/pokemon/roy.mp3",
-      text: @["its Roy", "you killed Roy", "Roy watches anime!", "Roy use Portmanteau"]),
+      text: @["its Roy"]),
     PokemonData(image: "res/pokemon/ethereal god.png", cry: "res/pokemon/ethereal god.mp3",
       text: @["Ethereal God challenges to battle! DGGKPfpt", "Your score was $1! Thank you!"]),
     PokemonData(image: "res/pokemon/morty.png", cry: "res/pokemon/morty.mp3",
       text: @["Morty is Chess."])]
+
+  playerMovementKeys*: array[low(PlayerMovement)..high(PlayerMovement), Scancode] = [
+    SDL_SCANCODE_UP, SDL_SCANCODE_RIGHT, SDL_SCANCODE_LEFT, SDL_SCANCODE_Y, SDL_SCANCODE_H]
 
 const
   stateKinds* = block:
@@ -118,20 +129,27 @@ type
       pokemonText*: PokemonText
       pokemonRand*: Rand
     of gs2d:
-      discard
-    else: discard
+      playerTexture*: TexturePtr
+      playerPosition*: Point
+      playerMovement*: seq[tuple[kind: PlayerMovement, speed, accel: float]]
+      playerAngle*: float
+      playerFlip*: cint
+      playerTotalMovement*: int
+      background2d*: TexturePtr
+    of gsCredits:
+      creditsTexture*: TexturePtr
+      creditsPosition*: cint
+      creditsSpeed*: cint
 
   Game* = ref object
     window*: WindowPtr
     renderer*: RendererPtr
     currentMusic*: MusicPtr
-    numTicks*: int
+    numTicks*, lastUpdateTick*: int
     font*: FontPtr
     state*: State
 
 const
-  colorBlack* = color(0, 0, 0, 255)
-  colorWhite* = color(255, 255, 255, 255)
   defaultText* = PokemonText(real: "", rendered: @[])
 
 defaultVar noneState, State(kind: gsNone)
@@ -191,6 +209,9 @@ proc loadTexture*(game: Game, image: cstring): TexturePtr =
       quit "Couldn't load texture " & $image & ", error: " & $getError()
     result = createTextureFromSurface(game.renderer, it)
 
+template loadSurface*(image: cstring): SurfacePtr =
+  sdlimage.load(image)
+
 proc stopMusic*(game: Game) =
   discard haltMusic()
   freeMusic(game.currentMusic)
@@ -227,9 +248,7 @@ proc draw*(game: Game, texture: TexturePtr, src, dest: Rect) =
 proc draw*(game: Game, texture: TexturePtr, dest: var Rect) =
   var w, h: cint
   texture.queryTexture(nil, nil, addr w, addr h)
-  var
-    src = rect(0, 0, w, h)
-  game.draw(texture, src, dest)
+  game.renderer.copy(texture, nil, addr dest)
 
 proc draw*(game: Game, texture: TexturePtr, dest: Rect) =
   var dest = dest
@@ -239,9 +258,8 @@ proc draw*(game: Game, texture: TexturePtr, x, y: cint) =
   var w, h: cint
   texture.queryTexture(nil, nil, addr w, addr h)
   var
-    src = rect(0, 0, w, h)
     dest = rect(x, y, w, h)
-  game.renderer.copy(texture, addr src, addr dest)
+  game.renderer.copy(texture, nil, addr dest)
 
 proc renderText*[T: char | cstring](game: Game, text: T,
                                     font: FontPtr,
@@ -256,15 +274,3 @@ proc renderText*[T: char | cstring](game: Game, text: T,
 
 template renderText*[T](game: Game, text: T, color = colorBlack): TexturePtr =
   renderText(game, text, game.font, color)
-
-proc `=destroy`*(texture: var TexturePtr) =
-  echo "freeing texture"
-  texture.destroy()
-
-proc `=destroy`*(texture: var ChunkPtr) =
-  echo "freeing wav"
-  texture.freeChunk()
-
-proc `=destroy`*(texture: var MusicPtr) =
-  echo "freeing music"
-  texture.freeMusic()

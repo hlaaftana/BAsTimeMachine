@@ -14,6 +14,13 @@ template withSurface*(surf: SurfacePtr, body: untyped): untyped {.dirty.} =
   body
   freeSurface(it)
 
+template withSurface*(surf: SurfacePtr, name, body: untyped): untyped {.dirty.} =
+  let `name` = surf
+  if unlikely(`name`.isNil):
+    quit "Surface was nil, error: " & $getError()
+  body
+  freeSurface(`name`)
+
 proc font*(name: cstring, size: cint): FontPtr =
   const win = defined(windows)
   when win:

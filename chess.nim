@@ -118,12 +118,12 @@ iterator moves*(chess: Board, x, y: int): tuple[x, y: int] =
       checkAndBreak(i, y - x + i, false, false)
   of King:
     check(x + 1, y + 1, false, false)
-    check(x + 1, y, bp = false)
+    check(x + 1, y, ap = false)
     check(x + 1, y - 1, false, false)
-    check(x, y + 1, ap = false)
-    check(x, y - 1, ap = false)
+    check(x, y + 1, bp = false)
+    check(x, y - 1, bp = false)
     check(x - 1, y + 1, false, false)
-    check(x - 1, y, bp = false)
+    check(x - 1, y, ap = false)
     check(x - 1, y - 1, false, false)
 
 when isMainModule:

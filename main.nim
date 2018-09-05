@@ -1,5 +1,5 @@
 import sdl2 except init, quit
-import sdl2/[mixer, ttf], random, sequtils, times
+import sdl2/[mixer, ttf], random, sequtils, times, math
 import /chess, /data, /util
 
 {.warning[ProveField]: off.}
@@ -31,6 +31,7 @@ proc initiateDdr(game: Game, pok: Pokemon) =
     pok.ddrArrows[i] = (d.key, game.loadTexture(d.hitboxImage), game.loadTexture(d.arrowImage), newSeq[int]())
 
 proc update(game: Game, newState: GameState) =
+  game.lastUpdateTick = game.numTicks
   game.state = State(kind: newState)
   let data = stateData[newState]
   case data.kind
@@ -44,6 +45,16 @@ proc update(game: Game, newState: GameState) =
     game.state.pokemonTextbox = game.loadTexture(textboxImage)
     game.setPokemon(low(PokemonKind))
   of gsk2d:
+    game.state.playerMovement = @[]
+    game.state.playerTexture = game.loadTexture("res/sonic.png")
+    game.state.background2d = game.loadTexture("res/sonicbg.png")
+    game.setMusic("res/sonic.mp3")
+    game.loopMusic()
+  of gskCredits:
+    game.state.creditsTexture = game.loadTexture("res/credits.png")
+    game.state.creditsSpeed = 1
+    game.setMusic("res/credits.mp3")
+    game.loopMusic()
     discard
 
 proc moveBlack(game: Game, board: var chess.Board) =
@@ -90,6 +101,7 @@ proc progress(game: Game) =
         game.setMusic("res/challenger.mp3")
         game.loopMusic()
       else:
+        pok.challengerTexture.destroy()
         setPokemon(game, succ(pok.kind))
     of Morty:
       if pok.chessPieceTexture.isNil:
@@ -100,7 +112,20 @@ proc progress(game: Game) =
         game.setMusic("res/chess.mp3")
         game.loopMusic()
       else:
+        pok.chessPieceTexture.destroy()
+        pok.chessBackground.destroy()
         game.update(gs2d)
+  of gs2d:
+    game.state.background2d.destroy()
+    game.state.playerTexture.destroy()
+    game.update(gsEnding)
+  of gsEnding:
+    if game.numTicks - game.lastUpdateTick >= 60:
+      game.state.dialog.destroy()
+      game.update(gsCredits)
+  of gsCredits:
+    game.state.creditsTexture.destroy()
+    game.update(gsDone)
   else: discard
 
 proc clearDdrArrow(game: Game, pok: Pokemon, hi, i: int, hy, ay: cint, windowSize: Point) =
@@ -178,6 +203,8 @@ proc key(game: Game, code: Scancode) =
           pok.ddrSpeed = pok.ddrSpeed div 2
         of SDL_SCANCODE_P:
           dec pok.ddrCount
+        of SDL_SCANCODE_O:
+          pok.ddrSpeed = pok.ddrSpeed * 2
         else: discard
     of Troll:
       if not pok.sudokuTexture.isNil and pok.sudokuCharacterTexture.isNil:
@@ -189,6 +216,50 @@ proc key(game: Game, code: Scancode) =
     if game.state.pokemonText.real.len != 0 and
       (game.state.pokemonText.isRendered or modsHeldDown):
       game.progress()
+  of gsk2d:
+    if (getModState().cint and KMOD_CTRL) != 0:
+      for pm, k in playerMovementKeys:
+        if k == code:
+          for p in game.state.playerMovement.mitems:
+            if p.kind == pm:
+              p.accel += 4.0
+          break
+    elif (getModState().cint and KMOD_SHIFT) != 0:
+      for pm, k in playerMovementKeys:
+        if k == code:
+          for p in game.state.playerMovement.mitems:
+            if p.kind == pm:
+              p.speed += 4.0
+          break
+    else:
+      case code
+      of SDL_SCANCODE_UP:
+        game.state.playerMovement.add((pmUp, 13.35, -2.4))
+      of SDL_SCANCODE_LEFT:
+        game.state.playerMovement.add((pmLeft, 6.7, 7.3))
+      of SDL_SCANCODE_RIGHT:
+        game.state.playerMovement.add((pmRight, 2.2, 0.45))
+      of SDL_SCANCODE_Y:
+        game.state.playerMovement.add((pmRotate, 3.5, 18.3))
+      of SDL_SCANCODE_H:
+        game.state.playerMovement.add((pmRotateBackward, 3.5, 18.3))
+      of SDL_SCANCODE_T:
+        game.state.playerFlip = game.state.playerFlip xor SDL_FLIP_HORIZONTAL
+      of SDL_SCANCODE_U:
+        game.state.playerFlip = game.state.playerFlip xor SDL_FLIP_VERTICAL
+      else: discard
+  of gskCredits:
+    var h: cint
+    game.state.creditsTexture.queryTexture(nil, nil, nil, addr h)
+    if h - game.state.creditsPosition == 720:
+      game.progress()
+    else:
+      case code
+      of SDL_SCANCODE_O:
+        game.state.creditsSpeed *= 2
+      of SDL_SCANCODE_L:
+        game.state.creditsSpeed = game.state.creditsSpeed div 2
+      else: discard
   else: discard
 
 proc mouse(game: Game, x, y: cint) =
@@ -199,7 +270,7 @@ proc mouse(game: Game, x, y: cint) =
     let winsz = game.window.getSize()
     let pok = game.state.pokemon
     case pok.kind
-    of Yourmurderguy, `Ethereal God`:
+    of Yourmurderguy:
       block bigger:
         for hi in countup(0, high(pok.ddrArrows)):
           let hitbox = hitbox(pok, hi, winsz)
@@ -231,10 +302,10 @@ proc mouse(game: Game, x, y: cint) =
             moveBlack(game, pok.chessBoard)
             break
     else: discard
-    if y >= winsz[1] div (1 +
-        ord(pok.kind != Roy or pok.challengerTexture.isNil)) and
+    if (pok.kind == Roy and not pok.challengerTexture.isNil) or
+      (y >= winsz[1] div 2 and
       game.state.pokemonText.real.len != 0 and
-      (game.state.pokemonText.isRendered or modsHeldDown):
+      (game.state.pokemonText.isRendered or modsHeldDown)):
       game.progress()
   else: discard
 
@@ -246,6 +317,18 @@ proc listen(game: Game) =
       game.state = doneState
     of KeyDown:
       game.key(event.key.keysym.scancode)
+    of KeyUp:
+      let sc = event.key.keysym.scancode
+      if stateKinds[game.state.kind] == gsk2d:
+        var
+          i = 0
+          hig = game.state.playerMovement.len
+        while i < hig:
+          if playerMovementKeys[game.state.playerMovement[i].kind] == sc:
+            game.state.playerMovement.del(i)
+            dec hig
+          else:
+            inc i
     of MouseButtonDown:
       let ev = event.button
       if ev.button == ButtonLeft:
@@ -297,21 +380,60 @@ proc tick(game: Game) =
           if pok.ddrIndicators[i][1] >= 100:
             pok.ddrIndicators.del(i)
             dec hig
-          inc i
+          else:
+            inc i
     else: discard
+  of gsk2d:
+    var
+      i = 0
+      hig = game.state.playerMovement.len
+    while i < hig:
+      template p: untyped = game.state.playerMovement[i]
+      case p.kind
+      of pmUp:
+        game.state.playerPosition.y += round(p.speed).cint
+      of pmRight:
+        game.state.playerPosition.x += round(p.speed).cint
+      of pmLeft:
+        game.state.playerPosition.x -= round(p.speed).cint
+      of pmRotate:
+        game.state.playerAngle += p.speed
+      of pmRotateBackward:
+        game.state.playerAngle -= p.speed
+      game.state.playerTotalMovement += p.speed.int
+      if game.state.playerTotalMovement >= 3133:
+        game.progress()
+        break
+      else:
+        if game.state.playerPosition.x notin 0..<1080 or
+          game.state.playerPosition.y notin 0..<720:
+          game.state.playerPosition = (
+            clamp(game.state.playerPosition[0], 0, 1079),
+            clamp(game.state.playerPosition[1], 0, 719))
+          game.state.playerMovement.del(i)
+          dec hig
+          continue
+        p.speed += p.accel
+        inc i
+  of gskCredits:
+    var h: cint
+    game.state.creditsTexture.queryTexture(nil, nil, nil, addr h)
+    if game.state.creditsPosition < h - 720:
+      game.state.creditsPosition = min(
+        game.state.creditsPosition + game.state.creditsSpeed,
+        h - 720)
   else: discard
   inc game.numTicks
 
 proc render(game: Game) =
+  let wsz = game.window.getSize()
+  let (ww, wh) = wsz
   case stateKinds[game.state.kind]
   of gskNoOp: discard
   of gskDialog:
-    let (ww, wh) = game.window.getSize()
     game.draw(game.state.dialog,
       dest = rect(0, 0, ww, wh))
   of gskPokemon:
-    let wsz = game.window.getSize()
-    let (ww, wh) = wsz
     let (aww, awh) = (ww div 2, wh div 2)
     let pok = game.state.pokemon
     if pok.kind == Roy and not pok.challengerTexture.isNil:
@@ -363,6 +485,25 @@ proc render(game: Game) =
           discard pok.chessPieceTexture.setTextureColorMod(255, s, s)
           #  quit "Could not set piece texture color mode" & $getError()
           game.draw(pok.chessPieceTexture, sq)
+  of gsk2d:
+    let pos = game.state.playerPosition
+    let player = game.state.playerTexture
+    game.draw(game.state.background2d,
+      dest = rect(0, 0, ww, wh))
+    var playerRect: Rect
+    player.queryTexture(nil, nil, addr playerRect.w, addr playerRect.h)
+    playerRect.w = (playerRect.w * 1080) div ww
+    playerRect.h = (playerRect.h * 720) div wh
+    playerRect.x = (pos.x * 1080) div ww
+    playerRect.y = ((720 - pos.y) * 720) div wh - playerRect.h
+    game.renderer.copyEx(player, nil, addr playerRect, game.state.playerAngle, nil, game.state.playerFlip)
+  of gskCredits:
+    let credit = game.state.creditsTexture
+    let pos = game.state.creditsPosition
+    var
+      src = rect(0, pos, 1080, 720)
+      dest = rect(0, 0, ww, wh)
+    game.draw(credit, src, dest)
   else: discard
 
 proc main =
@@ -388,6 +529,9 @@ proc main =
   if game.renderer.isNil:
     quit "Couldn't create renderer, " & $getError()
   game.font = font("Petscop Wide.ttf", 48)
+
+  withSurface loadBMP("res/icon.bmp"):
+    game.window.setIcon(it)
 
   discard openAudio(0, 0, 2, 4096)
   game.update(gsMenu)
