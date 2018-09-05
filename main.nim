@@ -85,7 +85,12 @@ proc progress(game: Game) =
         pok.sudokuCharacterTexture.destroy()
         setPokemon(game, succ(pok.kind))
     of Roy:
-      setPokemon(game, succ(pok.kind))
+      if pok.challengerTexture.isNil:
+        pok.challengerTexture = game.loadTexture("res/challenger.png")
+        game.setMusic("res/challenger.mp3")
+        game.loopMusic()
+      else:
+        setPokemon(game, succ(pok.kind))
     of Morty:
       if pok.chessPieceTexture.isNil:
         game.state.pokemonText = defaultText
@@ -226,7 +231,8 @@ proc mouse(game: Game, x, y: cint) =
             moveBlack(game, pok.chessBoard)
             break
     else: discard
-    if y >= winsz[1] div 2 and
+    if y >= winsz[1] div (1 +
+        ord(pok.kind != Roy or pok.challengerTexture.isNil)) and
       game.state.pokemonText.real.len != 0 and
       (game.state.pokemonText.isRendered or modsHeldDown):
       game.progress()
@@ -297,7 +303,6 @@ proc tick(game: Game) =
   inc game.numTicks
 
 proc render(game: Game) =
-  game.renderer.clear()
   case stateKinds[game.state.kind]
   of gskNoOp: discard
   of gskDialog:
@@ -308,6 +313,10 @@ proc render(game: Game) =
     let wsz = game.window.getSize()
     let (ww, wh) = wsz
     let (aww, awh) = (ww div 2, wh div 2)
+    let pok = game.state.pokemon
+    if pok.kind == Roy and not pok.challengerTexture.isNil:
+      game.draw(pok.challengerTexture, rect(0, 0, ww, wh))
+      return
     game.draw(game.state.pokemonTexture, rect(aww, 0, aww, awh))
     game.draw(game.state.pokemonTextbox, rect(0, awh, ww, awh))
     let text = game.state.pokemonText
@@ -322,7 +331,6 @@ proc render(game: Game) =
           rec.y += rec.h
         game.draw(r, rec)
         rec.x += rec.w
-    let pok = game.state.pokemon
     case pok.kind
     of Yourmurderguy, `Ethereal God`:
       for hi, hiarr in pok.ddrArrows:
@@ -356,7 +364,6 @@ proc render(game: Game) =
           #  quit "Could not set piece texture color mode" & $getError()
           game.draw(pok.chessPieceTexture, sq)
   else: discard
-  game.renderer.present()
 
 proc main =
   if not sdl2.init(INIT_VIDEO or INIT_TIMER or INIT_EVENTS or INIT_AUDIO):
@@ -391,7 +398,9 @@ proc main =
     game.listen()
     if cpuTime() - lastFrameTime >= (1 / 60):
       game.tick()
+      game.renderer.clear()
       game.render()
+      game.renderer.present()
       lastFrameTime = cpuTime()
 
   game.stopMusic()

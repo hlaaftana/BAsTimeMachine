@@ -100,7 +100,7 @@ type
     of Troll:
       sudokuTexture*, sudokuCharacterTexture*: TexturePtr
     of Roy:
-      discard
+      challengerTexture*: TexturePtr
     of Morty:
       chessBoard*: chess.Board
       chessAvailable*: set[uint8]
