@@ -1,5 +1,31 @@
 import sdl2, sdl2/[mixer, ttf], sdl2/image as sdlimage, /chess, /util, random
 
+when defined(js):
+  type Keycode* = int
+else: 
+  type Keycode* = Scancode
+
+when defined(js):
+  const
+    SpaceKey* = 32
+    UpKey* = 38
+    DownKey* = 40
+    LeftKey* = 37
+    RightKey* = 39
+    SevenKey* = 55
+    YKey* = 89
+    HKey* = 72
+else:
+  const
+    SpaceKey* = SDL_SCANCODE_SPACE
+    UpKey* = SDL_SCANCODE_UP
+    DownKey* = SDL_SCANCODE_DOWN
+    LeftKey* = SDL_SCANCODE_LEFT
+    RightKey* = SDL_SCANCODE_RIGHT
+    SevenKey* = SDL_SCANCODE_7
+    YKey* = SDL_SCANCODE_Y
+    HKey* = SDL_SCANCODE_H
+
 type
   PokemonKind* = enum
     Yourmurderguy, Troll, Roy, `Ethereal God`, Morty
@@ -14,7 +40,7 @@ type
     pmUp, pmRight, pmLeft, pmRotate, pmRotateBackward
 
 type
-  DdrData* = tuple[key: Scancode, hitboxImage, arrowImage: string]
+  DdrData* = tuple[key: Keycode, hitboxImage, arrowImage: string]
 
   PokemonData* = object
     image*, cry*: cstring
@@ -58,13 +84,13 @@ const
   textboxImage*: cstring = "res/textbox.png"
   sudokuImage*: cstring = "res/sudoku.png"
   ddrYourmurderguyData*: seq[DdrData] = @[
-    (SDL_SCANCODE_UP, "res/ddr/up_hitbox.png", "res/ddr/up_arrow.png"),
-    (SDL_SCANCODE_DOWN, "res/ddr/down_hitbox.png", "res/ddr/down_arrow.png"),
-    (SDL_SCANCODE_LEFT, "res/ddr/left_hitbox.png", "res/ddr/left_arrow.png"),
-    (SDL_SCANCODE_RIGHT, "res/ddr/right_hitbox.png", "res/ddr/right_arrow.png"),
-    (SDL_SCANCODE_SPACE, "res/ddr/space_hitbox.png", "res/ddr/space_arrow.png")]
+    (UpKey, "res/ddr/up_hitbox.png", "res/ddr/up_arrow.png"),
+    (DownKey, "res/ddr/down_hitbox.png", "res/ddr/down_arrow.png"),
+    (LeftKey, "res/ddr/left_hitbox.png", "res/ddr/left_arrow.png"),
+    (RightKey, "res/ddr/right_hitbox.png", "res/ddr/right_arrow.png"),
+    (SpaceKey, "res/ddr/space_hitbox.png", "res/ddr/space_arrow.png")]
   ddrEtherealGodData*: seq[DdrData] = @[
-    (SDL_SCANCODE_7, "res/ddr/hat.png", "res/ddr/woo.png")]
+    (SevenKey, "res/ddr/hat.png", "res/ddr/woo.png")]
 
   # if you think this should be in state data read above
   pokemonData*: array[low(PokemonKind)..high(PokemonKind), PokemonData] = [
@@ -81,8 +107,8 @@ const
     PokemonData(image: "res/pokemon/morty.png", cry: "res/pokemon/morty.mp3",
       text: @["Morty is Chess."])]
 
-  playerMovementKeys*: array[low(PlayerMovement)..high(PlayerMovement), Scancode] = [
-    SDL_SCANCODE_UP, SDL_SCANCODE_RIGHT, SDL_SCANCODE_LEFT, SDL_SCANCODE_Y, SDL_SCANCODE_H]
+  playerMovementKeys*: array[low(PlayerMovement)..high(PlayerMovement), Keycode] = [
+    UpKey, RightKey, LeftKey, YKey, HKey]
 
 const
   stateKinds* = block:
@@ -104,7 +130,7 @@ type
   Pokemon* = ref object
     case kind*: PokemonKind
     of Yourmurderguy, `Ethereal God`:
-      ddrArrows*: seq[tuple[key: Scancode, arrow, hitbox: TexturePtr, values: seq[int]]]
+      ddrArrows*: seq[tuple[key: Keycode, arrow, hitbox: TexturePtr, values: seq[int]]]
       ddrScore*, ddrCount*, ddrSpeed*: int
       ddrSoundEffects*: seq[ChunkPtr]
       ddrIndicators*: seq[(cstring, cint)]

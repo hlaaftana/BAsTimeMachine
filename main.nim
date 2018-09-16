@@ -3,6 +3,8 @@ import sdl2/[mixer, ttf], random, sequtils, times, math
 import /chess, /data, /util
 
 {.warning[ProveField]: off.}
+when not defined(js):
+  {.link: "res/icon.res".}
 
 proc setPokemon(game: Game, pm: PokemonKind) =
   let data = pokemonData[pm]

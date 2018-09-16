@@ -2,3 +2,4 @@ nimcache/
 *.dll
 *.exe
 notes.txt
+res/
